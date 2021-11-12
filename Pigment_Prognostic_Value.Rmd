@@ -1,0 +1,1314 @@
+---
+title: "Prognostic Pigment"
+author: "James Watson"
+date: "4/21/2021"
+output: 
+  html_document: 
+    toc: yes
+    number_sections: yes
+    keep_md: yes
+---
+
+
+TODO list:
+
+* Have we included the adults in AQUAMAT (eg Mozambique)? Need to check data merging with clincal dataset
+* Problems with the SMAC dataset - some of the readings are weird, especially Gabon
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, cache.comments = FALSE,
+                      echo = TRUE, include = TRUE, 
+                      fig.width = 8, fig.height = 8,
+                      fig.pos = 'H',dev = 'png', dpi = 300)
+
+library(lme4)
+library(mgcv)
+library(meta)
+library(gtools)
+library(RColorBrewer)
+library(dplyr)
+library(missForest)
+
+sessionInfo()
+```
+
+# Data
+
+```{r}
+load('Merged_pigment_data.RData')
+pigmt_data$meta_code = apply(pigmt_data[, c('study','country')], 1, 
+                             function(x) paste(x[1],x[2],sep=': '))
+
+my_cols_AQ = brewer.pal(n=9, name = 'Paired')
+my_cols_SQ = brewer.pal(n=4, name = 'Accent')
+my_cols_SMAC = brewer.pal(n=6, name = 'Set1')
+
+aqViet_ind = pigmt_data$study == 'AQ'  
+aq_ind = pigmt_data$study == 'AQUAMAT'  
+sq_ind = pigmt_data$study == 'SEAQUAMAT'
+smac_ind = pigmt_data$study == 'SMAC'
+
+pigmt_data$site_f = as.factor(pigmt_data$site)
+pigmt_data$country_f = as.factor(pigmt_data$country)
+pigmt_data$study_f = as.factor(pigmt_data$study)
+
+pigmt_data$prop_pigneut = pigmt_data$pig_neut/pigmt_data$pig_neut_denom
+pigmt_data$prop_pigmono = pigmt_data$pig_mono/pigmt_data$pig_mono_denom
+```
+
+
+parameters for Box-Cox transformation
+```{r}
+lambda_para = 50
+lambda_pigment = 0.5/100
+pigmt_data$lambda_para=lambda_para
+pigmt_data$lambda_pigment=lambda_pigment
+```
+
+
+## Assess bias in data availibility
+
+Availability of pigment data: is there a bias related to death? And related to parasitaemia?
+
+```{r readability}
+mod_death_AQ=
+  glmer(outcome ~ as.numeric(!is.na(pig_neut))+(1|site:country_f), 
+        family='binomial',
+        data = pigmt_data[aq_ind,])
+summary(mod_death_AQ)$coefficients
+
+mod_death_SQ=
+  glmer(outcome ~ as.numeric(!is.na(pig_neut))+(1|site:country_f),
+        family='binomial',
+        data = pigmt_data[sq_ind,])
+summary(mod_death_SQ)$coefficients
+
+
+mod_para_AQ =
+  glmer(as.numeric(!is.na(pig_neut)) ~ log10(parasitaemia+lambda_para)+
+          (1|site:country_f), 
+        family='binomial',
+        data = pigmt_data[aq_ind,])
+summary(mod_para_AQ)$coefficients
+
+mod_para_SQ = 
+  glm(as.numeric(!is.na(pig_neut)) ~ log10(parasitaemia+lambda_para) +
+        country_f,
+      family='binomial',
+      data = pigmt_data[sq_ind,])
+summary(mod_para_SQ)$coefficients
+
+mod_para = 
+  glmer(as.numeric(!is.na(pig_neut)) ~ log10(parasitaemia+lambda_para) +
+          (1|site:country_f:study),
+        family='binomial',
+        data = pigmt_data[sq_ind|aq_ind,])
+summary(mod_para)$coefficients
+
+par(las = 1, family='serif', mfrow=c(2,2))
+hist(log10(pigmt_data$parasitaemia+1)[aq_ind|sq_ind], freq = F,
+     breaks = seq(0,7,by=.5), main = 'AQ & SQ', xaxt='n', yaxt='n',
+     xlab = 'Parasitaemia on admission', ylab='',ylim=c(0,.6))
+axis(1, at = 0:6, labels = 10^(0:6))
+ind_na = is.na(pigmt_data$pig_neut)
+lines(density(log10(pigmt_data$parasitaemia+1)[ind_na&(aq_ind|sq_ind)],
+              na.rm = T),lwd=3,col='blue')
+lines(density(log10(pigmt_data$parasitaemia+1)[!ind_na&(aq_ind|sq_ind)],
+              na.rm = T),lwd=3, col='red',lty=2)
+legend('topleft', legend = c('Readable','Not readable'),
+       inset = 0.03, col = c('red','blue'),lwd=3,lty=c(2,1))
+
+
+hist(log10(pigmt_data$parasitaemia+lambda_para)[sq_ind], freq = F,
+     breaks = seq(0,7,by=.5), main = 'SEAQUAMAT', xaxt='n', yaxt='n',
+     xlab = 'Parasitaemia on admission', ylab='',ylim=c(0,.6))
+axis(1, at = 0:6, labels = 10^(0:6))
+ind_na = is.na(pigmt_data$pig_neut)
+lines(density(log10(pigmt_data$parasitaemia+lambda_para)[ind_na&sq_ind],
+              na.rm = T),lwd=3,col='blue')
+lines(density(log10(pigmt_data$parasitaemia+lambda_para)[!ind_na&sq_ind],
+              na.rm = T),lwd=3, col='red',lty=2)
+legend('topleft', legend = c('Readable','Not readable'),
+       inset = 0.03, col = c('red','blue'),lwd=3,lty=c(2,1))
+
+
+hist(log10(pigmt_data$parasitaemia+lambda_para)[aq_ind], freq = F,
+     breaks = seq(0,7,by=.5), main = 'AQUAMAT', xaxt='n', yaxt='n',
+     xlab = 'Parasitaemia on admission', ylab='',ylim=c(0,.6))
+axis(1, at = 0:6, labels = 10^(0:6))
+ind_na = is.na(pigmt_data$pig_neut)
+lines(density(log10(pigmt_data$parasitaemia+lambda_para)[ind_na&aq_ind],
+              na.rm = T),lwd=3,col='blue')
+lines(density(log10(pigmt_data$parasitaemia+lambda_para)[!ind_na&aq_ind],
+              na.rm = T),lwd=3, col='red',lty=2)
+legend('topleft', legend = c('Readable','Not readable'),
+       inset = 0.03, col = c('red','blue'),lwd=3,lty=c(2,1))
+
+table(high_para=pigmt_data$parasitaemia[aq_ind|sq_ind] > 10000, 
+      available=!is.na(pigmt_data$pig_neut[aq_ind|sq_ind]))
+```
+
+## Overall summaries of data
+
+Data summaries
+```{r}
+xx=aggregate(outcome ~ meta_code, pigmt_data, mean)
+xx$outcome = round(xx$outcome*100,1)
+print(xx)
+
+xx=aggregate(outcome ~ meta_code, pigmt_data[!is.na(pigmt_data$pig_neut),], mean)
+xx$outcome = round(xx$outcome*100,1)
+print(xx)
+
+writeLines(sprintf('We have data on pigmented neutrophil counts in %s patients', sum(!is.na(pigmt_data$pig_neut))))
+
+writeLines(sprintf('We have data on pigmented monocyte counts in %s patients', sum(!is.na(pigmt_data$pig_mono))))
+
+writeLines('Median pigmented neutrophil count by country and study:')
+aggregate(pig_neut ~ meta_code, data = pigmt_data, FUN = median)
+writeLines('Median pigmented monocyte count by country and study:')
+aggregate(pig_mono ~ meta_code, data = pigmt_data, FUN = median)
+```
+
+
+
+Some data plots
+```{r data_exploratory_plots, echo=F}
+par(mfrow=c(2,2),las=1)
+ind = pigmt_data$prop_pigneut>0
+hist(pigmt_data$prop_pigneut,main = 'PNs',
+     breaks = seq(0,1,by=0.01))
+hist(pigmt_data$prop_pigneut[ind],main = 'PNs: >0',
+     breaks = seq(0,1,by=0.01))
+ind = pigmt_data$prop_pigmono>0
+hist(pigmt_data$prop_pigmono,main = 'PMNs',
+     breaks = seq(0,1,by=0.01))
+hist(pigmt_data$prop_pigmono[ind],main = 'PMNs: >0',
+     breaks = seq(0,1,by=0.01))
+
+par(mfrow=c(2,2),las=1)
+qqplot(pigmt_data$prop_pigneut[aq_ind],
+       pigmt_data$prop_pigneut[sq_ind], 
+       xlab='AQUAMAT',ylab = 'SEAQUAMAT',panel.first=grid())
+lines(0:1, 0:1)
+qqplot(pigmt_data$prop_pigneut[aq_ind],
+       pigmt_data$prop_pigneut[smac_ind], 
+       xlab='AQUAMAT',ylab = 'SMAC',panel.first=grid())
+lines(0:1, 0:1)
+qqplot(pigmt_data$prop_pigneut[aq_ind],
+       pigmt_data$prop_pigneut[aqViet_ind], 
+       xlab='AQUAMAT',ylab = 'AQ Vietnam',panel.first=grid())
+lines(0:1, 0:1)
+```
+
+
+
+# Prognostic value of parasite counts, PNs and PMs in AQUAMAT and SEAQUAMAT
+
+
+## Overall prognostic value
+
+We use generalised additive models as the effects may be non-linear
+
+```{r, echo=F}
+### Models using Parasite counts
+mod_PCT_AQ = gam(outcome ~ s(log10(parasitaemia+lambda_para),k=4) + 
+                   s(country_f, bs='re'), 
+                 family='binomial', data = pigmt_data[aq_ind, ])
+summary(mod_PCT_AQ)$s.pv
+
+mod_PCT_SQ = gam(outcome ~ s(log10(parasitaemia+lambda_para),k=4) + 
+                   s(country_f, bs='re'),
+                 family='binomial', data = pigmt_data[sq_ind|aqViet_ind, ])
+summary(mod_PCT_SQ)$s.pv
+
+## Neutrophils
+mod_PN_AQ = gam(outcome ~ s(log10(prop_pigneut+lambda_pigment),k=4) + 
+                  s(country_f, bs='re'), 
+                family='binomial', data = pigmt_data[aq_ind, ])
+summary(mod_PN_AQ)$s.pv
+
+mod_PN_SQ = gam(outcome ~ s(log10(prop_pigneut+lambda_pigment),k=4) +
+                  s(country_f, bs='re'), 
+                family='binomial', data = pigmt_data[sq_ind|aqViet_ind, ])
+summary(mod_PN_SQ)$s.pv
+
+## Monocytes
+mod_PM_AQ = gam(outcome ~ s(log10(prop_pigmono+lambda_pigment),k=4) + 
+                  s(country_f, bs='re'), 
+                family='binomial', data = pigmt_data[aq_ind, ])
+summary(mod_PM_AQ)$s.pv
+
+mod_PM_SQ = gam(outcome ~ s(log10(prop_pigmono+lambda_pigment),k=4) + 
+                  s(country_f, bs='re'), 
+                family='binomial', data = pigmt_data[sq_ind|aqViet_ind, ])
+summary(mod_PM_SQ)$s.pv
+```
+
+
+```{r AQ_SQ_results, fig.width=12, fig.height=10, echo=F}
+par(las=1, bty='n', cex.lab=1.3, cex.axis=1.3, family='serif')
+layout(mat = matrix(c(1,2,2,3,4,4,
+                      5,6,6,7,8,8,
+                      9,10,10,11,12,12),nrow = 6,byrow = F))
+
+notna_para = !is.na(pigmt_data$parasitaemia)
+notna_neut = !is.na(pigmt_data$pig_neut)
+notna_mono = !is.na(pigmt_data$pig_mono)
+
+####********* Parasite counts *********#######
+xs = seq(log10(lambda_para),6.5,length.out = 100)
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$parasitaemia[sq_ind|aqViet_ind]+lambda_para),
+     main ='', xlab='',xaxt='n',xlim = range(xs),
+     breaks = 30,
+     ylab ='n')
+mtext(text = paste0('n=',sum(notna_para&(sq_ind|aqViet_ind))),
+      line = 1,
+      side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PCT_SQ,
+                 newdata=data.frame(parasitaemia=10^xs,
+                                    country_f = 0,
+                                    lambda_para=lambda_para),
+                 exclude = "s(country_f)",se.fit = T)
+plot(xs, 100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(5,50),
+     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+polygon(x = c(xs, rev(xs)),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+
+#***** AQUAMAT *******
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$parasitaemia[aq_ind]+lambda_para),
+     main ='', xlab='', xaxt='n',xlim = range(xs),breaks = 30,
+     ylab ='n')
+mtext(text = paste0('n=',sum(notna_para&aq_ind)),
+      line = 1,side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PCT_AQ,
+                 newdata=data.frame(parasitaemia=10^xs,
+                                    country_f = 0,
+                                    lambda_para=lambda_para),
+                 exclude = "s(country_f)",se.fit = T)
+plot(xs,100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n', ylim = c(4,20),
+     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+polygon(x = c(xs, rev(xs)),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+
+
+
+####********* Neutrophils *********#######
+xs = (0: round(100*quantile(pigmt_data$prop_pigneut, 
+                            probs = .99, na.rm = T)))/100
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$prop_pigneut[sq_ind|aqViet_ind]+lambda_pigment),
+     main ='', xlab='', xaxt='n',
+     xlim = range(log10(xs+lambda_pigment)), breaks = 20,
+     ylab ='n')
+mtext(text = paste0('n=',sum(notna_neut&(sq_ind|aqViet_ind))),
+      line = 1,side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PN_SQ,
+                 newdata=data.frame(prop_pigneut=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0),
+                 exclude = "s(country_f)",se.fit = T)
+plot(log10(xs+lambda_pigment), 
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(5,50),
+     xlab='Admission pigment containing PMNs (%)',
+     type='l',lwd=3)
+axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+
+#***** AQUAMAT *******
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$prop_pigneut[aq_ind]+lambda_pigment),
+     main ='', xlab='', xaxt='n',
+     xlim = range(log10(xs+lambda_pigment)), breaks = 20,
+     ylab ='n')
+mtext(text = paste0('n=',sum(notna_neut&(aq_ind))),
+      line = 1,side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PN_AQ,
+                 newdata=data.frame(prop_pigneut=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0),
+                 exclude = "s(country_f)",se.fit = T)
+plot(log10(xs+lambda_pigment),
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n', ylim = c(4,20),
+     xlab='Admission pigment containing PMNs (%)',type='l',lwd=3)
+axis(1, at = log10(c(0,1,2,5,10,20)/100+lambda_pigment), 
+     labels = c(0,1,2,5,10,20))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+
+
+####********* Monocytes *********#######
+xs = (0: round(100*quantile(pigmt_data$prop_pigmono, 
+                            probs = .99, na.rm = T)))/100
+
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$prop_pigmono[sq_ind|aqViet_ind]+lambda_pigment),
+     main ='', xlab='', xaxt='n',
+     xlim = range(log10(xs+lambda_pigment)), breaks = 20,
+     ylab ='n')
+mtext(text = paste0('n=',sum(notna_mono&(sq_ind|aqViet_ind))),
+      line = 1,side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PM_SQ,
+                 newdata=data.frame(prop_pigmono=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0),
+                 exclude = "s(country_f)",se.fit = T)
+plot(log10(xs+lambda_pigment), 
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(5,50),
+     xlab='Admission pigment containing PMMs (%)',type='l',lwd=3)
+axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
+     labels = c(0,1,5,20,40))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+
+#***** AQUAMAT *******
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$prop_pigmono[aq_ind]+lambda_pigment),
+     main ='', xlab='', xaxt='n',
+     xlim = range(log10(xs+lambda_pigment)), breaks = 20,
+     ylab ='n')
+mtext(text = paste0('n=',sum(notna_mono&(aq_ind))),
+      line = 1,side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PM_AQ,
+                 newdata=data.frame(prop_pigmono=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0),
+                 exclude = "s(country_f)",se.fit = T)
+plot(log10(xs+lambda_pigment),
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n', ylim = c(4,20),
+     xlab = 'Admission pigment containing PMMs (%)',
+     type='l',lwd=3)
+axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
+     labels = c(0,1,5,20,40))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+```
+
+## In cerebral malaria
+
+```{r}
+ind_cerebral = pigmt_data$coma==1
+# Parasite counts
+mod_PCT_AQ = gam(outcome ~ s(log10(parasitaemia+lambda_para),k=4) + 
+                   s(country_f, bs='re'), 
+                 family='binomial', 
+                 data = pigmt_data[aq_ind&ind_cerebral, ])
+summary(mod_PCT_AQ)
+
+mod_PCT_SQ = gam(outcome ~ s(log10(parasitaemia+lambda_para),k=4) + 
+                   s(country_f, bs='re'),
+                 family='binomial', 
+                 data = pigmt_data[sq_ind&ind_cerebral, ])
+summary(mod_PCT_SQ)
+
+## Neutrophils
+mod_PN_AQ = gam(outcome ~ s(log10(prop_pigneut+lambda_pigment),k=4) + 
+                  s(country_f, bs='re'), 
+                family='binomial',
+                data = pigmt_data[aq_ind&ind_cerebral, ])
+summary(mod_PN_AQ)
+
+mod_PN_SQ = gam(outcome ~ s(log10(prop_pigneut+lambda_pigment),k=4) +
+                  s(country_f, bs='re'), 
+                family='binomial',
+                data = pigmt_data[sq_ind&ind_cerebral, ])
+summary(mod_PN_SQ)
+
+## Monocytes
+mod_PM_AQ = gam(outcome ~ s(log10(prop_pigmono+lambda_pigment),k=4) + s(country_f, bs='re'), 
+                family='binomial',
+                data = pigmt_data[aq_ind&ind_cerebral, ])
+summary(mod_PM_AQ)
+
+mod_PM_SQ = gam(outcome ~ s(log10(prop_pigmono+lambda_pigment),k=4) +
+                  s(country_f, bs='re'), 
+                family='binomial',
+                data = pigmt_data[sq_ind&ind_cerebral, ])
+summary(mod_PM_SQ)
+```
+
+
+```{r AQ_SQ_results_coma, fig.width=9, fig.height=10}
+par(mfrow=c(3,2), las=1, bty='n', cex.lab=1.3,
+    cex.axis=1.3, family='serif')
+
+####********* Parasite counts *********#######
+xs = seq(log10(lambda_para),6,length.out = 100)
+my_preds=predict(mod_PCT_AQ,
+                 newdata=data.frame(parasitaemia=10^xs,
+                                    country_f = 0,
+                                    lambda_para=lambda_para),
+                 exclude = "s(country_f)",se.fit = T)
+plot(xs,100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
+     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+axis(1, at = 1:6, labels = c(10,
+                             expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+polygon(x = c(xs, rev(xs)),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+mtext(text = paste('AQUAMAT (n=',
+                   sum(!is.na(mod_PCT_AQ$model[,2])),')',
+                   sep=''),line = 1.5,
+      side = 3, adj = 0, cex=1.2)
+
+my_preds=predict(mod_PCT_SQ,
+                 newdata=data.frame(parasitaemia=10^xs,
+                                    country_f = 0,
+                                    lambda_para=lambda_para),
+                 exclude = "s(country_f)",se.fit = T)
+plot(xs, 100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
+     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+axis(1, at = 1:6, labels = c(10,
+                             expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+polygon(x = c(xs, rev(xs)),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+mtext(text = paste('SEAQUAMAT (n=',
+                   sum(!is.na(mod_PCT_SQ$model[,2])),')',
+                   sep=''),line = 1.5,
+      side = 3, adj = 0, cex=1.2)
+
+####********* Neutrophils *********#######
+xs = (0: round(100*quantile(pigmt_data$prop_pigneut[aq_ind], 
+                            probs = .99, na.rm = T)))/100
+my_preds=predict(mod_PN_AQ,
+                 newdata=data.frame(prop_pigneut=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0),
+                 exclude = "s(country_f)",se.fit = T)
+plot(log10(xs+lambda_pigment),
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
+     xlab='Admission pigment containing PMNs (%)',type='l',lwd=3)
+axis(1, at = log10(c(0,1,2,5,10)/100+lambda_pigment), 
+     labels = c(0,1,2,5,10))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+mtext(text = paste('AQUAMAT (n=',
+                   sum(!is.na(mod_PN_AQ$model[,2])),')',
+                   sep=''),line = 1.5,
+      side = 3, adj = 0, cex=1.2)
+
+xs = (0: round(100*quantile(pigmt_data$prop_pigneut[sq_ind], 
+                            probs = .99, na.rm = T)))/100
+my_preds=predict(mod_PN_SQ,
+                 newdata=data.frame(prop_pigneut=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0),
+                 exclude = "s(country_f)",se.fit = T)
+plot(log10(xs+lambda_pigment), 
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
+     xlab='Admission pigment containing PMNs (%)',
+     type='l',lwd=3)
+axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+mtext(text = paste('SEAQUAMAT (n=',
+                   sum(!is.na(mod_PN_SQ$model[,2])),')',
+                   sep=''),line = 1.5,
+      side = 3, adj = 0, cex=1.2)
+
+
+
+####********* Monocytes *********#######
+xs = (0: round(100*quantile(pigmt_data$prop_pigmono[aq_ind], 
+                            probs = .99, na.rm = T)))/100
+my_preds=predict(mod_PM_AQ,
+                 newdata=data.frame(prop_pigmono=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0),
+                 exclude = "s(country_f)",se.fit = T)
+plot(log10(xs+lambda_pigment),
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
+     xlab = 'Admission pigment containing PMMs (%)',
+     type='l',lwd=3)
+axis(1, at = log10(c(0,1,5,10,20,40)/100+lambda_pigment), 
+     labels = c(0,1,5,10,20,40))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+mtext(text = paste('AQUAMAT (n=',
+                   sum(!is.na(mod_PM_AQ$model[,2])),')',
+                   sep=''),line = 1.2,
+      side = 3, adj = 0, cex=1.2)
+
+xs = (0: round(100*quantile(pigmt_data$prop_pigmono[sq_ind], 
+                            probs = .99, na.rm = T)))/100
+my_preds=predict(mod_PM_SQ,
+                 newdata=data.frame(prop_pigmono=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0),
+                 exclude = "s(country_f)",se.fit = T)
+plot(log10(xs+lambda_pigment), 
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
+     xlab='Admission pigment containing PMMs (%)',type='l',lwd=3)
+axis(1, at = log10(c(0,1,2,5,10,15)/100+lambda_pigment), 
+     labels = c(0,1,2,5,10,15))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+mtext(text = paste('SEAQUAMAT (n=',
+                   sum(!is.na(mod_PM_SQ$model[,2])),')',
+                   sep=''),line = 1.5,
+      side = 3, adj = 0, cex=1.2)
+```
+
+
+## Prognostic value in African children
+
+```{r}
+Af_ind = aq_ind|smac_ind
+### Models using Parasite counts
+mod_PCT = gam(outcome ~ s(log10(parasitaemia+lambda_para),k=4) + 
+                   s(country_f, bs='re')+s(study_f, bs='re'), 
+                 family='binomial', 
+              data = pigmt_data[Af_ind, ])
+summary(mod_PCT)$s.pv
+
+
+## Neutrophils
+mod_PN = gam(outcome ~ s(log10(prop_pigneut+lambda_pigment),k=4) + 
+                  s(country_f, bs='re')+s(study_f, bs='re'), 
+                family='binomial', data = pigmt_data[Af_ind, ])
+summary(mod_PN)$s.pv
+
+## Monocytes
+mod_PM = gam(outcome ~ s(log10(prop_pigmono+lambda_pigment),k=4) + 
+                  s(country_f, bs='re')+s(study_f, bs='re'), 
+                family='binomial', data = pigmt_data[Af_ind, ])
+summary(mod_PM)$s.pv
+
+```
+
+```{r African_children, fig.width=10, fig.height=8}
+par(las=1, bty='n', cex.lab=1.3, cex.axis=1.3, family='serif')
+layout(mat = matrix(c(1,2,2,3,4,4,5,6,6),nrow = 3,byrow = F))
+
+####********* Parasite counts *********#######
+xs = seq(log10(lambda_para),6.5,length.out = 100)
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$parasitaemia[Af_ind]+50),
+     main ='', xlab='',xaxt='n',xlim = range(xs),
+     breaks = 30, ylab ='n')
+mtext(text = paste0('n=',sum(notna_para&Af_ind)),
+      line = 1,side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PCT,
+                 newdata=data.frame(parasitaemia=10^xs,
+                                    country_f = 0,
+                                    study_f = 0,
+                                    lambda_para=lambda_para),
+                 exclude = c("s(country_f)","study_f"),
+                 se.fit = T)
+plot(xs, 100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
+     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+polygon(x = c(xs, rev(xs)),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+
+
+####********* Neutrophils *********#######
+xs = (0: round(100*quantile(pigmt_data$prop_pigneut, 
+                            probs = .99, na.rm = T)))/100
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$prop_pigneut[Af_ind]+lambda_pigment),
+     main ='', xlab='', xaxt='n',ylab ='n',
+     xlim = range(log10(xs+lambda_pigment)), breaks = 20)
+mtext(text = paste0('n=',sum(notna_neut&Af_ind)),
+      line = 1,side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PN,
+                 newdata=data.frame(prop_pigneut=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0,
+                                    study_f=0),
+                 exclude = c("s(country_f)","study_f)"),
+                             se.fit = T)
+plot(log10(xs+lambda_pigment), 
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
+     xlab='Admission pigment containing PMNs (%)',
+     type='l',lwd=3)
+axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+
+
+
+####********* Monocytes *********#######
+xs = (0: round(100*quantile(pigmt_data$prop_pigmono, 
+                            probs = .99, na.rm = T)))/100
+
+par(mar = c(1,6,5,4))
+hist(log10(pigmt_data$prop_pigmono[Af_ind]+lambda_pigment),
+     main ='', xlab='', xaxt='n',ylab ='n',
+     xlim = range(log10(xs+lambda_pigment)), breaks = 20)
+mtext(text = paste0('n=',sum(notna_mono&Af_ind)),
+      line = 1,side = 3, adj = 0, cex=1.1)
+par(mar = c(5,6,0,4))
+
+my_preds=predict(mod_PM,
+                 newdata=data.frame(prop_pigmono=xs,
+                                    lambda_pigment=lambda_pigment,
+                                    country_f = 0,
+                                    study_f = 0),
+                 exclude = c("s(country_f)","study_f"),
+                 se.fit = T)
+plot(log10(xs+lambda_pigment), 
+     100*inv.logit(my_preds$fit), panel.first = grid(),
+     ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
+     xlab='Admission pigment containing PMMs (%)',type='l',lwd=3)
+axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
+     labels = c(0,1,5,20,40))
+polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
+        y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
+                            rev(my_preds$fit-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+```
+
+
+## Prognostic value of pigmented neutrophils alone: meta-analysis
+
+Remove patients with no pigment data
+```{r}
+pigmt_data = filter(pigmt_data, 
+                    !is.na(prop_pigmono) | !is.na(prop_pigneut))
+apply(pigmt_data, 2, function(x) round(100*mean(is.na(x)),1))
+
+
+aqViet_ind = pigmt_data$study == 'AQ'  
+aq_ind = pigmt_data$study == 'AQUAMAT'  
+sq_ind = pigmt_data$study == 'SEAQUAMAT'
+smac_ind = pigmt_data$study == 'SMAC'
+```
+
+
+
+```{r stratified_counts, fig.width=11, fig.height=7}
+quantile(round(100*pigmt_data$prop_pigneut), 
+         seq(0,1,by=.1), na.rm = T)
+mycuts = c(-1,0,1,2,5,100)
+pigmt_data$pig_neut100_bins =
+  cut(round(100*pigmt_data$prop_pigneut), 
+      breaks = mycuts, right = T,
+      include.lowest = T)
+table(pigmt_data$pig_neut100_bins)
+mod_all=glmer(outcome ~ pig_neut100_bins + (1|site:country:study), 
+              family='binomial', data = pigmt_data)
+xxs = summary(mod_all)$coefficients[-1, ]
+
+
+quantile(round(100*pigmt_data$prop_pigmono), seq(0,1,by=.1), na.rm = T)
+pigmt_data$pig_mono30_bins =
+  cut(round(100*pigmt_data$prop_pigmono), 
+      breaks = mycuts, include.lowest = T)
+table(pigmt_data$pig_mono30_bins)
+mod_all=glmer(outcome ~ pig_mono30_bins + (1|site:country:study), 
+              family='binomial', data = pigmt_data)
+xxs2 = summary(mod_all)$coefficients[-1, ]
+
+
+par(mfrow=c(1,2), mar=c(5,6,4,6), las=1,
+    bty='n',family='serif', cex.lab=1.3, cex.axis=1.3)
+plot(c(0,xxs[,1]), 0:nrow(xxs), pch=16, xlim = c(-0.25, 1.2),
+     ylab='', yaxt='n',panel.first = grid(),
+     xlab='Odds-ratio for death', xaxt='n')
+abline(v=0, lty=2, lwd=2)
+mtext(text = 'A: pigment containing PMNs',side = 3,adj = 0,cex = 1.3, 
+      line = 1.5)
+axis(1, at = log(c(1,2,3)), labels = 1:3)
+axis(2, at = 0:nrow(xxs), 
+     labels = c('0%: ref','(0-1]','(1-2]','(2-5]','>5'),tick = F)
+# axis(2, at = 3, labels = expression(''>="5%"))
+axis(4, at = 0:nrow(xxs),tick = F,
+     labels = paste('n',table(pigmt_data$pig_neut100_bins),
+                    sep='='))
+for(i in 1:nrow(xxs)){
+  upci = xxs[i,1]+1.96*xxs[i,2]
+  loci = xxs[i,1]-1.96*xxs[i,2]
+  lines(c(loci, upci), c(i,i), lwd=3)
+}
+
+rm(xxs)
+plot(c(0,xxs2[,1]), 0:nrow(xxs2), pch=16, xlim = c(-0.25, 1.2),
+     ylab='', yaxt='n',panel.first = grid(),
+     xlab='Odds-ratio for death', xaxt='n')
+abline(v=0, lty=2, lwd=2)
+mtext(text = 'B: pigment containing PMMs',side = 3,adj = 0, cex = 1.3, 
+      line = 1.5)
+axis(1, at = log(c(1,2,3)), labels = 1:3)
+axis(2, at = 0:nrow(xxs2), 
+     labels = c('0%: ref','(0-1]','(1-2]','(2-5]','>5'),tick = F)
+# axis(2, at = 3, labels = expression(''>="5%"))
+axis(4, at = 0:nrow(xxs2),tick = F,
+     labels = paste('n',table(pigmt_data$pig_mono30_bins),
+                    sep='='))
+for(i in 1:nrow(xxs2)){
+  upci = xxs2[i,1]+1.96*xxs2[i,2]
+  loci = xxs2[i,1]-1.96*xxs2[i,2]
+  lines(c(loci, upci), c(i,i), lwd=3)
+}
+```
+
+
+
+```{r pigmented_neutrophils_5percent, fig.width=10}
+ind_not_na = !is.na(pigmt_data$prop_pigneut) & !is.na(pigmt_data$outcome)
+ind_pos = pigmt_data$prop_pigneut > 0.05
+event_e = c()
+n_e = c()
+event_c = c()
+n_c = c()
+lab = c()
+for(ss in unique(pigmt_data$meta_code)){
+  ind = pigmt_data$meta_code==ss
+  my_study = ss
+  event_e = c(event_e, 
+              sum(pigmt_data$outcome[ind_not_na&ind&ind_pos]))
+  n_e = c(n_e, sum(ind_not_na&ind&ind_pos))
+  event_c = c(event_c, sum(pigmt_data$outcome[ind_not_na&ind& !ind_pos]))
+  n_c = c(n_c, sum(ind_not_na&ind& !ind_pos))
+  lab = c(lab, ss)           
+}
+
+mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
+            n.c = n_c, studlab = lab,
+            sm = 'OR',
+            comb.random = T)
+par(family='serif')
+forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
+       rightcols=c("effect", "ci", "w.random"),
+       test.overall.random=T,
+       digits.pval=1, scientific.pval=T)
+```
+
+
+Mixed effect model
+```{r}
+# box-cox transformation
+mod_all=glmer(outcome ~ log10(prop_pigneut+lambda_pigment) +
+                (1|site:country:study), 
+              family='binomial', data = pigmt_data)
+summary(mod_all)$coefficients
+round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
+
+# box-cox transformation - just using >0 data
+mod_all_pos=glmer(outcome ~ log10(prop_pigneut) + 
+                    (1|site:country:study), 
+                  family='binomial', 
+                  data = pigmt_data[pigmt_data$prop_pigneut>0, ])
+exp(summary(mod_all_pos)$coefficients)[2,1]
+
+
+
+mod_all=glmer(outcome ~ as.numeric(prop_pigneut > 0.05) + 
+                (1|site:country:study), 
+              family='binomial', data = pigmt_data)
+summary(mod_all)$coefficients
+round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
+```
+
+
+
+## Prognostic value of pigmented monocytes alone: meta-analysis
+
+```{r pigmented_monocytes_5percent, fig.width=10}
+ind_not_na = !is.na(pigmt_data$prop_pigmono) & !is.na(pigmt_data$outcome)
+ind_pos = pigmt_data$prop_pigmono > 0.05
+event_e = c()
+n_e = c()
+event_c = c()
+n_c = c()
+lab = c()
+for(ss in unique(pigmt_data$meta_code)){
+  ind = pigmt_data$meta_code==ss
+  my_study = pigmt_data$study[ind][1]
+  event_e = c(event_e, sum(pigmt_data$outcome[ind_not_na&ind&ind_pos]))
+  n_e = c(n_e, sum(ind_not_na&ind&ind_pos))
+  event_c = c(event_c, sum(pigmt_data$outcome[ind_not_na&ind& !ind_pos]))
+  n_c = c(n_c, sum(ind_not_na&ind& !ind_pos))
+  lab = c(lab, ss)           
+}
+
+mod=metabin(event.e = event_e, 
+            n.e = n_e,
+            event.c = event_c,
+            n.c = n_c, studlab = lab, 
+            sm = 'OR',
+            comb.random = T)
+par(family='serif')
+forest(mod, lab.e = '>5% pPMM', lab.c = '<5% pPMM',
+       rightcols=c("effect", "ci", "w.random"),
+       test.overall.random=T,
+       digits.pval=1, scientific.pval=T)
+```
+
+
+Mixed effect model
+```{r}
+mod_all=glmer(outcome ~ as.numeric(prop_pigmono) +
+                (1|site:country:study), 
+              family='binomial', data = pigmt_data)
+summary(mod_all)$coefficients
+
+mod_all=glmer(outcome ~ log10(prop_pigmono+lambda_pigment) +
+                (1|site:country:study), 
+              family='binomial', data = pigmt_data)
+summary(mod_all)$coefficients
+```
+
+## Prognostic value of pigmented monocytes in addition to severity data
+
+
+AQ VIETNAM
+```{r}
+#****** Neutrophils *********
+# Model of prognostic value without severity included
+mod_AQV_neut_alone = glm(outcome ~ as.numeric(prop_pigneut>0.05),
+                         family='binomial', 
+                         data = pigmt_data[aqViet_ind, ])
+summary(mod_AQV_neut_alone)$coefficients
+
+# Model of prognostic value with clinical markers of severity included
+mod_AQV_neut_clinical = glm(outcome ~ as.numeric(prop_pigneut>0.05) + 
+                              coma + hb + acidosis + resp_rate, 
+                            family='binomial', 
+                            data = pigmt_data[aqViet_ind, ])
+summary(mod_AQV_neut_clinical)$coefficients
+
+# Model of prognostic value with clinical & lab markers of severity included
+mod_AQV_neut_lab = glm(outcome ~ as.numeric(prop_pigneut>0.05) +
+                         coma + hb + acidosis + resp_rate + base_excess_imp, 
+                       family='binomial', 
+                       data = pigmt_data[aqViet_ind, ])
+summary(mod_AQV_neut_lab)$coefficients
+
+# AQ Vietnam is an outlier so we use the raw clinical data
+mod_AQV_bk = glm(outcome ~ as.numeric(prop_pigneut>0.05) + log(lactate), 
+                 family='binomial', 
+                 data = pigmt_data[aqViet_ind, ])
+summary(mod_AQV_bk)$coefficients
+
+#****** Monocytes *********
+# Model of prgnostic value without severity included
+mod_AQV_mono_alone = glm(outcome ~ as.numeric(prop_pigmono>0.05), 
+                         family='binomial', 
+                         data = pigmt_data[aqViet_ind, ])
+summary(mod_AQV_mono_alone)$coefficients
+
+# Model of prognostic value with clinical markers of severity included
+mod_AQV_mono_clinical = glm(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                              coma + hb + acidosis + resp_rate, 
+                            family='binomial', 
+                            data = pigmt_data[aqViet_ind, ])
+summary(mod_AQV_mono_clinical)$coefficients
+
+# Model of prognostic value with clinical & lab markers of severity included
+mod_AQV_mono_lab = glm(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                         coma + hb + acidosis + resp_rate + base_excess_imp,
+                       family='binomial', 
+                       data = pigmt_data[aqViet_ind, ])
+summary(mod_AQV_mono_lab)$coefficients
+```
+
+
+SEAQUAMAT
+```{r}
+#****** Neutrophils *********
+# Model of prgnostoc value without severity included
+mod_SQ_neut_alone = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
+                            (1|site:country), 
+                          family='binomial', 
+                          data = pigmt_data[sq_ind, ])
+summary(mod_SQ_neut_alone)$coefficients[2,]
+
+# Model of prognostic value with clinical markers of severity included
+mod_SQ_neut_clinical = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
+                               coma + age + acidosis + resp_rate +
+                               (1|site:country), 
+                             family='binomial', 
+                             data = pigmt_data[sq_ind, ])
+summary(mod_SQ_neut_clinical)$coefficients[2,]
+
+# Model of prognostic value with clinical & lab markers of severity included
+mod_SQ_neut_lab = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
+                          coma + age + acidosis + resp_rate + base_excess_imp +
+                          + (1|site:country), 
+                        family='binomial', 
+                        data = pigmt_data[sq_ind, ])
+summary(mod_SQ_neut_lab)$coefficients[2,]
+
+
+#****** Monocytes *********
+# Model of prgnostoc value without severity included
+mod_SQ_mono_alone = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                            (1|site:country), 
+                          family='binomial', 
+                          data = pigmt_data[sq_ind, ])
+summary(mod_SQ_mono_alone)$coefficients
+
+# Model of prognostic value with clinical markers of severity included
+mod_SQ_mono_clinical = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                               coma + age + acidosis + resp_rate + 
+                               (1|site:country), 
+                             family='binomial', 
+                             data = pigmt_data[sq_ind, ])
+summary(mod_SQ_mono_clinical)$coefficients
+
+# Model of prognostic value with clinical & lab markers of severity included
+mod_SQ_mono_lab = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                          coma + age + acidosis + resp_rate + base_excess_imp  +
+                          (1|site:country), 
+                        family='binomial', 
+                        data = pigmt_data[sq_ind, ])
+summary(mod_SQ_mono_lab)$coefficients
+```
+
+AQUAMAT
+```{r}
+#****** Neutrophils *********
+# Model of prognostic value without severity included
+mod_AQ_neut_alone = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + (1|site:country), 
+                          family='binomial', data = pigmt_data[aq_ind, ])
+summary(mod_AQ_neut_alone)$coefficients
+
+# Model of prognostic value with clinical markers of severity included
+mod_AQ_neut_clinical = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
+                               coma + age + acidosis + resp_rate + 
+                               (1|site:country), 
+                             family='binomial', 
+                             data = pigmt_data[aq_ind, ])
+summary(mod_AQ_neut_clinical)$coefficients
+
+# Model of prognostic value with clinical & lab markers of severity included
+mod_AQ_neut_lab = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
+                          coma + age + acidosis + resp_rate + base_excess_imp +
+                          (1|site:country), 
+                        family='binomial', 
+                        data = pigmt_data[aq_ind, ])
+summary(mod_AQ_neut_lab)$coefficients
+
+#****** Monocytes *********
+# Model of prognostic value without severity included
+mod_AQ_mono_alone = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + (1|site:country), 
+                          family='binomial', data = pigmt_data[aq_ind, ])
+summary(mod_AQ_mono_alone)$coefficients
+
+# Model of prognostic value with clinical markers of severity included
+mod_AQ_mono_clinical = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                               coma + age + acidosis + resp_rate +
+                               (1|site:country), 
+                             family='binomial', 
+                             data = pigmt_data[aq_ind, ])
+summary(mod_AQ_mono_clinical)$coefficients
+
+# Model of prognostic value with clinical & lab markers of severity included
+mod_AQ_mono_lab = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                          coma + age + acidosis + resp_rate + base_excess_imp +
+                          (1|site:country), 
+                        family='binomial', 
+                        data = pigmt_data[aq_ind, ])
+summary(mod_AQ_mono_lab)$coefficients
+
+```
+
+
+
+SMAC
+```{r}
+#**** Neutrophils *****
+# Model of prognostic value without severity included
+mod_SMAC_neut_alone = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + (1|site:country),
+                            family='binomial', 
+                            data = pigmt_data[smac_ind, ])
+summary(mod_SMAC_neut_alone)$coefficients
+
+# Model of prognostic value with clinical markers of severity included
+mod_SMAC_neut_clinical = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
+                                 coma + age + acidosis + resp_rate + (1|site:country), 
+                               family='binomial', 
+                               data = pigmt_data[smac_ind, ])
+summary(mod_SMAC_neut_clinical)$coefficients
+
+# Model of prognostic value with clinical & lab markers of severity included
+mod_SMAC_neut_lab = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
+                            coma + age + acidosis + resp_rate + base_excess_imp +
+                            (1|site:country), 
+                          family='binomial', 
+                          data = pigmt_data[smac_ind, ])
+summary(mod_SMAC_neut_lab)$coefficients
+
+
+#**** Monocytes *****
+# Model of prognostic value without severity included
+mod_SMAC_mono_alone = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + (1|site:country),
+                            family='binomial', 
+                            data = pigmt_data[smac_ind, ])
+summary(mod_SMAC_mono_alone)$coefficients
+
+# Model of prognostic value with clinical markers of severity included
+mod_SMAC_mono_clinical = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                                 coma + age + acidosis + resp_rate +
+                                 (1|site:country), 
+                               family='binomial', 
+                               data = pigmt_data[smac_ind, ])
+summary(mod_SMAC_mono_clinical)$coefficients
+
+# Model of prognostic value with clinical & lab markers of severity included
+mod_SMAC_mono_lab = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
+                            coma + age + acidosis + resp_rate + base_excess_imp +
+                            (1|site:country), 
+                          family='binomial', 
+                          data = pigmt_data[smac_ind, ])
+summary(mod_SMAC_mono_lab)$coefficients
+```
+
+
+Make summaries
+```{r}
+#**Neutrophils**
+my_var = 'as.numeric(prop_pigneut > 0.05)'
+coefs_non_adj = data.frame(
+  rbind(summary(mod_AQV_neut_alone)$coefficients[my_var, 1:2],
+        summary(mod_SQ_neut_alone)$coefficients[my_var, 1:2],
+        summary(mod_AQ_neut_alone)$coefficients[my_var, 1:2],
+        summary(mod_SMAC_neut_alone)$coefficients[my_var, 1:2]))
+coefs_non_adj$upperCI = coefs_non_adj$Estimate+1.96*coefs_non_adj$Std..Error
+coefs_non_adj$lowerCI = coefs_non_adj$Estimate-1.96*coefs_non_adj$Std..Error
+
+coefs_adj = data.frame(
+  rbind(summary(mod_AQV_neut_clinical)$coefficients[my_var, 1:2],
+        summary(mod_SQ_neut_clinical)$coefficients[my_var, 1:2],
+        summary(mod_AQ_neut_clinical)$coefficients[my_var, 1:2],
+        summary(mod_SMAC_neut_clinical)$coefficients[my_var, 1:2]))
+coefs_adj$upperCI = coefs_adj$Estimate+1.96*coefs_adj$Std..Error
+coefs_adj$lowerCI = coefs_adj$Estimate-1.96*coefs_adj$Std..Error
+
+
+coefs_adj2 = data.frame(
+  rbind(summary(mod_AQV_neut_lab)$coefficients[my_var, 1:2],
+        summary(mod_SQ_neut_lab)$coefficients[my_var, 1:2],
+        summary(mod_AQ_neut_lab)$coefficients[my_var, 1:2],
+        summary(mod_SMAC_neut_lab)$coefficients[my_var, 1:2]))
+coefs_adj2$upperCI = coefs_adj2$Estimate+1.96*coefs_adj2$Std..Error
+coefs_adj2$lowerCI = coefs_adj2$Estimate-1.96*coefs_adj2$Std..Error
+
+
+
+#**Monocytes**
+my_var = 'as.numeric(prop_pigmono > 0.05)'
+coefs_non_adj_PM = data.frame(
+  rbind(summary(mod_AQV_mono_alone)$coefficients[my_var, 1:2],
+        summary(mod_SQ_mono_alone)$coefficients[my_var, 1:2],
+        summary(mod_AQ_mono_alone)$coefficients[my_var, 1:2],
+        summary(mod_SMAC_mono_alone)$coefficients[my_var, 1:2]))
+coefs_non_adj_PM$upperCI = coefs_non_adj_PM$Estimate+1.96*coefs_non_adj_PM$Std..Error
+coefs_non_adj_PM$lowerCI = coefs_non_adj_PM$Estimate-1.96*coefs_non_adj_PM$Std..Error
+
+coefs_adj_PM = data.frame(
+  rbind(summary(mod_AQV_mono_clinical)$coefficients[my_var, 1:2],
+        summary(mod_SQ_mono_clinical)$coefficients[my_var, 1:2],
+        summary(mod_AQ_mono_clinical)$coefficients[my_var, 1:2],
+        summary(mod_SMAC_mono_clinical)$coefficients[my_var, 1:2]))
+coefs_adj_PM$upperCI = coefs_adj_PM$Estimate+1.96*coefs_adj_PM$Std..Error
+coefs_adj_PM$lowerCI = coefs_adj_PM$Estimate-1.96*coefs_adj_PM$Std..Error
+
+
+coefs_adj2_PM = data.frame(
+  rbind(summary(mod_AQV_mono_lab)$coefficients[my_var, 1:2],
+        summary(mod_SQ_mono_lab)$coefficients[my_var, 1:2],
+        summary(mod_AQ_mono_lab)$coefficients[my_var, 1:2],
+        summary(mod_SMAC_mono_lab)$coefficients[my_var, 1:2]))
+coefs_adj2_PM$upperCI = coefs_adj2_PM$Estimate+1.96*coefs_adj2_PM$Std..Error
+coefs_adj2_PM$lowerCI = coefs_adj2_PM$Estimate-1.96*coefs_adj2_PM$Std..Error
+```
+
+severity at baseline across sites
+```{r severity_sites, fig.width=12, fig.height=8}
+ind_not_na_neut = !is.na(pigmt_data$prop_pigneut)
+ind_not_na_mono = !is.na(pigmt_data$prop_pigmono)
+
+my_cols = brewer.pal(n = 12, name = 'Paired')[c(2,10,6,8)]
+par(mar=c(5,10,4,2), las=1, bty='n', mfrow=c(1,2),cex.lab=1.3, cex.axis=1.3)
+epsilon = 0.1
+plot(coefs_non_adj[,'Estimate'], (4:1)-epsilon, pch=17, 
+     panel.first = grid(), ylim = c(1-epsilon, 4+epsilon),
+     xlim = range(c(coefs_adj$upperCI, 
+                    coefs_adj$lowerCI,
+                    coefs_non_adj$upperCI,
+                    coefs_non_adj$lowerCI,
+                    coefs_adj2$upperCI,
+                    coefs_adj2$lowerCI)),
+     ylab = '', yaxt='n', xaxt='n',col=my_cols[1],
+     xlab = expression('Odds-ratio for death'))
+points(coefs_adj[,'Estimate'], (4:1), pch=16,col=my_cols[2])
+points(coefs_adj2[,'Estimate'], (4:1)+epsilon, pch=15,col=my_cols[3])
+axis(1, at = log(c(0.7,1,2,4,8,16)), labels = c(0.7,1,2,4,8,16))
+axis(2, at = 4:1, labels = c(paste0('AQ Vietnam\nn=',sum(aqViet_ind&ind_not_na_neut)),
+                             paste0('SEAQUAMAT\nn=',sum(sq_ind&ind_not_na_neut)),
+                             paste0('AQUAMAT\nn=',sum(aq_ind&ind_not_na_neut)),
+                             paste0('SMAC\nn=',sum(smac_ind&ind_not_na_neut))),tick = F)
+abline(v=0, lty=2, lwd=3)
+for(j in 1:4){
+  i = rev(1:4)[j]
+  lines(c(coefs_non_adj$lowerCI[j], coefs_non_adj$upperCI[j]),
+        c(i-epsilon, i-epsilon), lwd=2,col=my_cols[1])
+  lines(c(coefs_adj$lowerCI[j], coefs_adj$upperCI[j]),
+        c(i, i), lwd=2,col=my_cols[2])
+  lines(c(coefs_adj2$lowerCI[j], coefs_adj2$upperCI[j]),
+        c(i+epsilon, i+epsilon), lwd=2,col=my_cols[3])
+}
+legend('right',
+       legend = c('Non-adjusted',
+                  'Adjusted: clinical',
+                  'Adjusted: clinical and lab'),
+       lwd = 3, col = my_cols, pch = 17:15, cex=1.3)
+mtext(text = 'A: >5% pigment containing PMNs',side = 3,adj = 0, cex = 1.5, line=1.5)
+
+
+par(mar=c(5,10,4,2), las=1)
+epsilon = 0.1
+plot(coefs_non_adj_PM[,'Estimate'], (4:1)-epsilon, pch=17, 
+     panel.first = grid(), ylim = c(1-epsilon, 4+epsilon),
+     xlim = range(c(coefs_adj_PM$upperCI, 
+                    coefs_adj_PM$lowerCI,
+                    coefs_non_adj_PM$upperCI,
+                    coefs_non_adj_PM$lowerCI,
+                    coefs_adj2_PM$upperCI,
+                    coefs_adj2_PM$lowerCI)),
+     ylab = '', yaxt='n', xaxt='n',col=my_cols[1],
+     xlab = expression('Odds-ratio for death'))
+points(coefs_adj_PM[,'Estimate'], (4:1), pch=16,col=my_cols[2])
+points(coefs_adj2_PM[,'Estimate'], (4:1)+epsilon, pch=15,col=my_cols[3])
+axis(1, at = log(c(0.3,0.5,1,2,4,8)), 
+     labels = c(0.3,0.5,1,2,4,8))
+axis(2, at = 4:1, labels = c(paste0('AQ Vietnam\nn=',sum(aqViet_ind&ind_not_na_mono)),
+                             paste0('SEAQUAMAT\nn=',sum(sq_ind&ind_not_na_mono)),
+                             paste0('AQUAMAT\nn=',sum(aq_ind&ind_not_na_mono)),
+                             paste0('SMAC\nn=',sum(smac_ind&ind_not_na_mono))),tick = F)
+abline(v=0, lty=2, lwd=3)
+for(j in 1:4){
+  i = rev(1:4)[j]
+  lines(c(coefs_non_adj_PM$lowerCI[j], coefs_non_adj_PM$upperCI[j]),
+        c(i-epsilon, i-epsilon), lwd=2,col=my_cols[1])
+  lines(c(coefs_adj_PM$lowerCI[j], coefs_adj_PM$upperCI[j]),
+        c(i, i), lwd=2,col=my_cols[2])
+  lines(c(coefs_adj2_PM$lowerCI[j], coefs_adj2_PM$upperCI[j]),
+        c(i+epsilon, i+epsilon), lwd=2,col=my_cols[3])
+}
+mtext(text = 'B: >5% pigment containing PMMs',side = 3,adj = 0, cex = 1.5, line=1.5)
+```
+
+
+
+
+
+## Extra analyses
+
+
+```{r}
+pigmt_data$study_f = as.factor(pigmt_data$study)
+mod = gam(outcome ~ s(log10(parasitaemia+50),k=4)+
+            s(site_f,bs='re')+s(study_f,bs='re'), family='binomial', 
+          data = pigmt_data[smac_ind|aq_ind,])
+xs = seq(log10(50),6.2,length.out = 100)
+my_preds=predict(mod,
+                 data.frame(parasitaemia=10^(xs),
+                            site_f = -1,
+                            study_f= -1), 
+                 exclude = "s(site_f)", se.fit = T)
+
+par(las=1,mar=c(0,6,3,3))
+layout(mat = matrix(c(1,2,2,2),nrow = 4))
+hist(log10(pigmt_data$parasitaemia[smac_ind|aq_ind]+50),breaks = 40,
+     xlim = range(xs), 
+     main='Parasitaemia and death in 30000 African children',
+     xaxt='n',xlab='',yaxt='n',ylab='')
+par(mar=c(5,6,0,3))
+plot(xs, 100*inv.logit(my_preds$fit), type='l',panel.first = grid(),
+     ylim = c(0,20), xlab='Parasite density (per uL)')
+polygon(x = c(xs, rev(xs)),
+        y = 100*inv.logit(c((my_preds$fit)+1.96*my_preds$se.fit,
+                            rev((my_preds$fit)-1.96*my_preds$se.fit))),
+        border = NA, col = adjustcolor('grey',alpha.f = .3))
+```
+

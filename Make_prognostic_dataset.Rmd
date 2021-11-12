@@ -1,0 +1,398 @@
+---
+title: "Pigment_prognosticators_SM"
+author: "James Watson"
+date: "4/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+```
+
+**** THIS SCRIPT ONLY RUNS WITH ACCESS TO RAW DATA ******
+
+## Load all datasets
+
+Conventions for dataset:
+
+* Outcome: died is encoded as 1
+* Age: in years
+* Hypo: < 2.2 mmol/L
+
+### Vietnamese adults
+
+AQ Vietnam 
+
+```{r}
+## Load the AQ Vietnam data
+aqViet_dat = read.csv('~/Dropbox/Datasets/AQ study/Pigment AQ from Vietnam.csv')
+aqViet_dat$STUDY_NO = gsub(pattern = ' ', replacement = '', x = aqViet_dat$STUDY_NO)
+aqViet_clinical = readstata13::read.dta13('~/Dropbox/Datasets/AQ study/macpet97.dta')
+
+# check drug allocation
+print(aggregate(outcome ~ drug, aqViet_clinical, mean))
+
+aqViet_clinical$studyno = paste('AQ', aqViet_clinical$studyno, sep='')
+aqViet_clinical = dplyr::arrange(aqViet_clinical, studyno)
+aqViet_dat = dplyr::arrange(aqViet_dat, STUDY_NO)
+
+aqViet_clinical$pig_neut = NA
+aqViet_clinical$pig_mono = NA
+aqViet_clinical$pig_neut[aqViet_clinical$studyno%in%aqViet_dat$STUDY_NO]=
+  aqViet_dat$PIG..NEUT
+aqViet_clinical$pig_mono[aqViet_clinical$studyno%in%aqViet_dat$STUDY_NO]=
+  aqViet_dat$PIG.MON
+
+AQViet_data_set = data.frame(study = 'AQ',
+                             site = 'HCMC',
+                             country = 'Vietnam',
+                             id = aqViet_clinical$studyno,
+                             art = as.numeric(aqViet_clinical$drug==0),
+                             age = aqViet_clinical$age,
+                             hb = aqViet_clinical$admhct/3,
+                             outcome = aqViet_clinical$outcome,
+                             resp_rate = aqViet_clinical$admrr,
+                             lactate = aqViet_clinical$admlac,
+                             hypoglycaemia = aqViet_clinical$hypoad,
+                             acidosis = NA,
+                             bun = aqViet_clinical$admbun,
+                             acute_renal_failure = aqViet_clinical$arfad,
+                             base_excess = aqViet_clinical$sbe,
+                             coma = aqViet_clinical$cerebad,
+                             parasitaemia = aqViet_clinical$admpct,
+                             pig_neut = aqViet_clinical$pig_neut,
+                             pig_neut_denom=100,
+                             pig_mono = aqViet_clinical$pig_mono,
+                             pig_mono_denom=30)
+
+# Additional later data file for patients with missing data
+aqViet_dat2 = readxl::read_excel('~/Dropbox/Datasets/AQ study/Pigment from MacPeto8.xlsx')
+aqViet_dat2$ID = paste0('AQ', aqViet_dat2$studyno)
+aqViet_dat2 = aqViet_dat2[!is.na(aqViet_dat2$pigneut), ]
+ind = is.na(AQViet_data_set$pig_neut)
+table(ind)
+for(id in AQViet_data_set$id[ind]){
+  if(id %in% aqViet_dat2$ID){
+    i = AQViet_data_set$id==id
+    j = aqViet_dat2$ID==id
+    AQViet_data_set$pig_neut[i]=aqViet_dat2$pigneut[j]
+    AQViet_data_set$pig_mono[i]=aqViet_dat2$pigmon[j]
+  }
+}
+
+ind = is.na(AQViet_data_set$pig_neut)
+table(ind)
+ind = is.na(AQViet_data_set$pig_mono)
+table(ind)
+```
+
+### SEAQUAMAT
+
+```{r}
+SQ_clinical = haven::read_sav('~/Dropbox/Datasets/SEAQUAMAT/seaquamat stage 3.sav')
+SQ_Pig = read.csv('~/Dropbox/Datasets/SEAQUAMAT/Merged_pigmentdata_SQ.csv')
+SQ_Pig$ID[which(!SQ_Pig$ID %in% SQ_clinical$studyno)]
+SQ_Pig = SQ_Pig[!duplicated(SQ_Pig$ID), ]
+SQ_Pig = SQ_Pig[SQ_Pig$ID %in% SQ_clinical$studyno, ]
+SQ_Pig = dplyr::arrange(SQ_Pig, ID)
+SQ_clinical = SQ_clinical %>% filter(studyno %in% SQ_Pig$ID) %>% arrange(studyno)
+SQ_clinical$site = apply(SQ_clinical[,c('country','hospital')],1,function(x) paste(x[1], x[2], sep=': '))
+all(SQ_clinical$studyno == SQ_Pig$ID)
+
+ind = is.na(SQ_clinical$hbad) & !is.na(SQ_clinical$hctad)
+SQ_clinical$hbad[ind] = SQ_clinical$hctad[ind]/3
+
+SQ_data_set = data.frame(study = 'SEAQUAMAT',
+                         site = SQ_clinical$site,
+                         country = SQ_clinical$country,
+                         id = SQ_clinical$studyno,
+                         age = SQ_clinical$age,
+                         art = as.numeric(SQ_clinical$drug=='Artesunate'),
+                         outcome = as.numeric(SQ_clinical$outcome==1),
+                         resp_rate = SQ_clinical$resratead,
+                         lactate = NA,
+                         acute_renal_failure = NA,
+                         bun = SQ_clinical$bunad,
+                         hb = SQ_clinical$hbad,
+                         hypoglycaemia = SQ_clinical$hypogly,
+                         acidosis = SQ_clinical$acidad,
+                         base_excess = SQ_clinical$bead,
+                         coma = SQ_clinical$comaad,
+                         parasitaemia = SQ_clinical$admpct,
+                         pig_neut = as.numeric(SQ_Pig$PosPigmentPer100Neu),
+                         pig_neut_denom = as.numeric(SQ_Pig$Neutdenominator),
+                         pig_mono = as.numeric(SQ_Pig$PosPigmentPer30Mono),
+                         pig_mono_denom = as.numeric(SQ_Pig$Monodenominator))
+
+```
+
+
+### AQUAMAT
+
+```{r}
+library(haven)
+AQUAMAT <- read.csv('~/Dropbox/Datasets/AQUAMAT/Nick_DayVersion_AQUAMAT_data.csv')
+AQUAMAT = dplyr::arrange(AQUAMAT, studynumber)
+AQ_paraUl = read.csv("~/Dropbox/Datasets/AQUAMAT/AQ_paraUl.csv")
+AQ_paraUl = dplyr::filter(AQ_paraUl, StudyNumber%in%AQUAMAT$studynumber)
+AQ_paraUl = dplyr::arrange(AQ_paraUl, StudyNumber)
+all(AQ_paraUl$StudyNumber==AQUAMAT$studynumber)
+sum(is.na(AQUAMAT$parasitaemia) & !is.na(AQ_paraUl$Aparasitemia))
+ind = is.na(AQUAMAT$parasitaemia) & !is.na(AQ_paraUl$Aparasitemia)
+AQUAMAT$parasitaemia[ind] = AQ_paraUl$Aparasitemia[ind]
+
+Pig_AQ = read.csv('~/Dropbox/Datasets/AQUAMAT/Merged_pigmentdata_AQUAMAT.csv')
+Pig_AQ = filter(Pig_AQ, !is.na(Neutcount) | !is.na(Monocount), 
+                ID %in% AQUAMAT$studynumber)
+Pig_AQ = dplyr::arrange(Pig_AQ, ID)
+
+AQUAMAT$hb[(is.na(AQUAMAT$hb) & !is.na(AQUAMAT$hct))] =
+  AQUAMAT$hct[(is.na(AQUAMAT$hb) & !is.na(AQUAMAT$hct))]/3
+AQUAMAT$country[AQUAMAT$country=='Congo']='DRC'
+AQUAMAT$country[AQUAMAT$country=='Gambia']='The Gambia'
+
+AQ_data_set = data.frame(study = 'AQUAMAT',
+                         site = AQUAMAT$city,
+                         country = AQUAMAT$country,
+                         id = AQUAMAT$studynumber,
+                         age = AQUAMAT$patage,
+                         art = as.numeric(AQUAMAT$odrug2=='Artesunate'),
+                         outcome = as.numeric(AQUAMAT$odead==1),
+                         resp_rate = AQUAMAT$aresp,
+                         base_excess = AQUAMAT$be,
+                         hypoglycaemia = AQUAMAT$ahypoglyc,
+                         lactate = NA,
+                         acute_renal_failure = NA,
+                         bun = AQUAMAT$bun,
+                         hb = AQUAMAT$hb,
+                         acidosis = AQUAMAT$aacidosis,
+                         coma = AQUAMAT$acoma,
+                         parasitaemia = AQUAMAT$parasitaemia,
+                         pig_neut = NA,
+                         pig_neut_denom = 100,
+                         pig_mono = NA,
+                         pig_mono_denom = 30)
+
+AQ_data_set$pig_neut[AQ_data_set$id %in% Pig_AQ$ID]=
+  Pig_AQ$Neutcount
+AQ_data_set$pig_mono[AQ_data_set$id %in% Pig_AQ$ID]=
+  Pig_AQ$Monocount
+
+AQ_data_set$pig_neut_denom[AQ_data_set$id %in% Pig_AQ$ID]=
+  Pig_AQ$Neutdenominator
+AQ_data_set$pig_mono_denom[AQ_data_set$id %in% Pig_AQ$ID]=
+  Pig_AQ$Monodenominator
+
+```
+
+
+### SMAC
+
+```{r}
+load('Kremsner_data.RData')
+myMergedData$coma_score = myMergedData$BES+myMergedData$BMS+myMergedData$BVS
+myMergedData$coma = as.numeric(myMergedData$coma_score <= 2)
+myMergedData$country = 
+  plyr::mapvalues(myMergedData$country, 
+                  from = c("gam","gha","ken","lam","lib","mal"),
+                  to = c('The Gambia','Ghana','Kenya','Gabon (Lambarene)',
+                         'Gabon (Libreville)','Malawi'))
+
+SMAC_data_set = data.frame(study = 'SMAC',
+                           site = myMergedData$country,
+                           country = myMergedData$country,
+                           id = NA,
+                           age = myMergedData$AGE/12,
+                           art=0,
+                           outcome = as.numeric(myMergedData$OUTCOME==1),
+                           resp_rate = myMergedData$RESPRATE,
+                           hb = myMergedData$HB,
+                           base_excess = myMergedData$BE,
+                           hypoglycaemia = as.numeric(myMergedData$GLUCOSE<2.2),
+                           acute_renal_failure=NA,
+                           bun=NA,
+                           lactate = myMergedData$LACTATE,
+                           acidosis = as.numeric(myMergedData$DEEPBR==1),
+                           coma = myMergedData$coma,
+                           parasitaemia = myMergedData$PARASIT,
+                           pig_neut = myMergedData$POLYL200,
+                           pig_neut_denom = 200,
+                           pig_mono = myMergedData$MONOL200,
+                           pig_mono_denom = 200)
+
+
+
+writeLines(sprintf('The number of patients in SMAC with missing coma score data is %s', sum(is.na(SMAC_data_set$coma))))
+
+```
+
+
+
+### Compare datasets
+
+```{r}
+par(mfrow=c(1,2), las=1, family='serif')
+##******** Parasite counts ***********
+qqplot(log10(AQ_data_set$parasitaemia+1), 
+       log10(SQ_data_set$parasitaemia+1), pch=20,
+       xlab='Parasitaemia AQUAMAT', 
+       ylab = 'Parasitaemia SEAQUAMAT',
+       panel.first=grid())
+lines(0:7, 0:7)
+qqplot(log10(AQ_data_set$parasitaemia+1), 
+       log10(SMAC_data_set$parasitaemia+1), pch=20,
+       xlab='Parasitaemia AQUAMAT', 
+       ylab = 'Parasitaemia SMAC',
+       panel.first=grid())
+lines(0:7, 0:7)
+
+
+par(mfrow=c(1,2), las=1, family='serif')
+##******** Base excess ***********
+qqplot(AQ_data_set$base_excess, 
+       SQ_data_set$base_excess, pch=20,
+       xlab='Base excess AQUAMAT', 
+       ylab = 'Base excess SEAQUAMAT',
+       panel.first=grid())
+lines(-50:50, -50:50)
+qqplot(AQ_data_set$base_excess, 
+       SMAC_data_set$base_excess, pch=20,
+       xlab='Base excess AQUAMAT', 
+       ylab = 'Base excess SMAC',
+       panel.first=grid())
+lines(-50:50, -50:50)
+
+
+##******** Respiratory rate ***********
+par(mfrow=c(1,2), las=1, family='serif')
+qqplot(AQ_data_set$resp_rate, 
+       SQ_data_set$resp_rate, pch=20,
+       xlab='Respiratory rate AQUAMAT', 
+       ylab = 'Respiratory rate SEAQUAMAT',
+       panel.first=grid())
+lines(-50:500, -50:500)
+qqplot(AQ_data_set$resp_rate, 
+       SMAC_data_set$resp_rate, pch=20,
+       xlab='Respiratory rate AQUAMAT', 
+       ylab = 'Respiratory rate SMAC',
+       panel.first=grid())
+lines(-50:500, -50:500)
+
+##******** Age ***********
+par(mfrow=c(1,2), las=1, family='serif')
+qqplot(AQ_data_set$age, 
+       SQ_data_set$age, pch=20,
+       xlab='Age AQUAMAT', 
+       ylab = 'Age SEAQUAMAT',
+       panel.first=grid())
+lines(-50:50, -50:50)
+qqplot(AQ_data_set$age, 
+       SMAC_data_set$age, pch=20,
+       xlab='Age AQUAMAT', 
+       ylab = 'Age SMAC',
+       panel.first=grid())
+lines(-50:50, -50:50)
+
+##******** Pigmented Neutrophils ***********
+par(mfrow=c(1,2), las=1, family='serif')
+qqplot(AQ_data_set$pig_neut/AQ_data_set$pig_neut_denom, 
+       SQ_data_set$pig_neut/SQ_data_set$pig_neut_denom, pch=20,
+       xlab='Pigmented neutrophils AQUAMAT', 
+       ylab = 'Pigmented neutrophils SEAQUAMAT',
+       panel.first=grid())
+lines(-50:50, -50:50)
+qqplot(AQ_data_set$pig_neut/AQ_data_set$pig_neut_denom, 
+       SMAC_data_set$pig_neut/SMAC_data_set$pig_neut_denom, pch=20,
+       xlab='Pigmented neutrophils AQUAMAT', 
+       ylab = 'Pigmented neutrophils SMAC',
+       panel.first=grid())
+lines(-50:50, -50:50)
+
+# 
+# ind_lam = SMAC_data_set$site=='lam'
+# ind_gam = SMAC_data_set$site=='gam'
+# 
+# qqplot(AQ_data_set$pig_neut, 
+#        SMAC_data_set$pig_neut[ind_lam], pch=20,
+#        xlab='Pigmented neutrophils AQUAMAT', 
+#        ylab = 'Pigmented neutrophils SMAC (Lambarene)',
+#        panel.first=grid())
+# title('Lambarene')
+# lines(-50:50, -50:50)
+# 
+# qqplot(AQ_data_set$pig_neut, 
+#        SMAC_data_set$pig_neut[!ind_lam], pch=20,
+#        xlab='Pigmented neutrophils AQUAMAT', 
+#        ylab = 'Pigmented neutrophils SMAC (not Lambarene)',
+#        panel.first=grid())
+# lines(-50:50, -50:50)
+# title('NOT Lambarene')
+# 
+# qqplot(AQ_data_set$pig_neut, 
+#        SMAC_data_set$pig_neut[ind_gam], pch=20,
+#        xlab='Pigmented neutrophils AQUAMAT', 
+#        ylab = 'Pigmented neutrophils SMAC (Gambia)',
+#        panel.first=grid())
+# title('Banjul')
+# lines(-50:50, -50:50)
+
+
+
+##******** Pigmented monocytes ***********
+par(mfrow=c(1,2), las=1, family='serif')
+qqplot(AQ_data_set$pig_mono/AQ_data_set$pig_mono_denom, 
+       SQ_data_set$pig_mono/SQ_data_set$pig_mono_denom, pch=20,
+       xlab='Pigmented monocytes AQUAMAT', 
+       ylab = 'Pigmented monocytes SEAQUAMAT',
+       panel.first=grid())
+lines(-50:50, -50:50)
+qqplot(AQ_data_set$pig_mono/AQ_data_set$pig_mono_denom, 
+       SMAC_data_set$pig_mono/SMAC_data_set$pig_mono_denom, pch=20,
+       xlab='Pigmented monocytes AQUAMAT', 
+       ylab = 'Pigmented monocytes SMAC',
+       panel.first=grid())
+lines(-50:50, -50:50)
+```
+
+Proportion with coma across sites:
+```{r}
+writeLines('Cerebral malaria across sites in SEAQUAMAT:')
+aggregate(coma ~ site, data = SQ_data_set,FUN = mean)
+writeLines('Cerebral malaria across sites in AQUAMAT:')
+aggregate(coma ~ site, data = AQ_data_set,FUN = mean)
+writeLines('Cerebral malaria across sites in SMAC:')
+aggregate(coma ~ site, data = SMAC_data_set,FUN = mean)
+```
+
+
+Proportion with acidosis across sites:
+```{r}
+writeLines('Acidosis across sites in SEAQUAMAT:')
+aggregate(acidosis ~ site, data = SQ_data_set,FUN = mean)
+writeLines('Acidosis across sites in AQUAMAT:')
+aggregate(acidosis ~ site, data = AQ_data_set,FUN = mean)
+writeLines('Acidosis across sites in SMAC:')
+aggregate(acidosis ~ site, data = SMAC_data_set,FUN = mean)
+```
+
+Mortality across sites:
+```{r}
+writeLines('Mortality across sites in SEAQUAMAT:')
+aggregate(outcome ~ site, data = SQ_data_set,FUN = mean)
+writeLines('Mortality across sites in AQUAMAT:')
+aggregate(outcome ~ site, data = AQ_data_set,FUN = mean)
+writeLines('Mortality across sites in SMAC:')
+aggregate(outcome ~ site, data = SMAC_data_set,FUN = mean)
+```
+
+Make composite dataset
+```{r}
+my_cols = colnames(SQ_data_set)
+pigmt_data = rbind(AQViet_data_set[, my_cols],
+                   SQ_data_set[,my_cols], 
+                   AQ_data_set[,my_cols], 
+                   SMAC_data_set[,my_cols])
+save(pigmt_data, file = 'Merged_pigment_data.RData')
+```
+
