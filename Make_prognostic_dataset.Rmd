@@ -190,7 +190,7 @@ AQ_data_set$pig_mono_denom[AQ_data_set$id %in% Pig_AQ$ID]=
 ### SMAC
 
 ```{r}
-load('Kremsner_data.RData')
+load('RData/SMAC_data.RData')
 myMergedData$coma_score = myMergedData$BES+myMergedData$BMS+myMergedData$BVS
 myMergedData$coma = as.numeric(myMergedData$coma_score <= 2)
 myMergedData$country = 
@@ -393,6 +393,6 @@ pigmt_data = rbind(AQViet_data_set[, my_cols],
                    SQ_data_set[,my_cols], 
                    AQ_data_set[,my_cols], 
                    SMAC_data_set[,my_cols])
-save(pigmt_data, file = 'Merged_pigment_data.RData')
+save(pigmt_data, file = 'RData/Merged_pigment_data.RData')
 ```
 
