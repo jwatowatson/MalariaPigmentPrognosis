@@ -2,6 +2,8 @@
 
 The prognostic and diagnostic value of pigment containing leukocytes in severe malaria. We look at the proportion on pigment containing neutrophils and pigment containing monocytes separately. The analysis first looks at new data from MORU/OUCRU studies (AQ Vietnam, SEAQUAMAT, AQUAMAT) and then does a pooled individual patient data meta analysis combining with data from SMAC and a study in Mali (Lyke et al).
 
+[![DOI](https://zenodo.org/badge/427291251.svg)](https://zenodo.org/badge/latestdoi/427291251)
+
 
 ## Prognostic value
 
