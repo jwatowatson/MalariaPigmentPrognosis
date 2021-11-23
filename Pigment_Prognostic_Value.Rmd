@@ -40,6 +40,9 @@ load('RData/Merged_pigment_data.RData')
 pigmt_data$meta_code = apply(pigmt_data[, c('study','country')], 1, 
                              function(x) paste(x[1],x[2],sep=': '))
 
+# remove patients without an outcome variable
+pigmt_data = filter(pigmt_data, !is.na(outcome))
+
 my_cols_AQ = brewer.pal(n=9, name = 'Paired')
 my_cols_SQ = brewer.pal(n=4, name = 'Accent')
 my_cols_SMAC = brewer.pal(n=6, name = 'Set1')
@@ -48,6 +51,7 @@ aqViet_ind = pigmt_data$study == 'AQ'
 aq_ind = pigmt_data$study == 'AQUAMAT'  
 sq_ind = pigmt_data$study == 'SEAQUAMAT'
 smac_ind = pigmt_data$study == 'SMAC'
+lyke_ind = pigmt_data$study == 'Lyke et al'
 
 pigmt_data$site_f = as.factor(pigmt_data$site)
 pigmt_data$country_f = as.factor(pigmt_data$country)
@@ -56,7 +60,14 @@ pigmt_data$study_f = as.factor(pigmt_data$study)
 pigmt_data$prop_pigneut = pigmt_data$pig_neut/pigmt_data$pig_neut_denom
 pigmt_data$prop_pigmono = pigmt_data$pig_mono/pigmt_data$pig_mono_denom
 
+writeLines('Available PMN data:')
 table(pigmt_data$study, !is.na(pigmt_data$pig_neut))
+
+writeLines('Available PMM data:')
+table(pigmt_data$study, !is.na(pigmt_data$pig_mono))
+
+writeLines('Available parasite count data:')
+table(pigmt_data$study, !is.na(pigmt_data$parasitaemia))
 ```
 
 
@@ -108,24 +119,16 @@ mod_para =
         data = pigmt_data[sq_ind|aq_ind,])
 summary(mod_para)$coefficients
 
-par(las = 1, family='serif', mfrow=c(2,2))
-hist(log10(pigmt_data$parasitaemia+1)[aq_ind|sq_ind], freq = F,
-     breaks = seq(0,7,by=.5), main = 'AQ & SQ', xaxt='n', yaxt='n',
-     xlab = 'Parasitaemia on admission', ylab='',ylim=c(0,.6))
-axis(1, at = 0:6, labels = 10^(0:6))
-ind_na = is.na(pigmt_data$pig_neut)
-lines(density(log10(pigmt_data$parasitaemia+1)[ind_na&(aq_ind|sq_ind)],
-              na.rm = T),lwd=3,col='blue')
-lines(density(log10(pigmt_data$parasitaemia+1)[!ind_na&(aq_ind|sq_ind)],
-              na.rm = T),lwd=3, col='red',lty=2)
-legend('topleft', legend = c('Readable','Not readable'),
-       inset = 0.03, col = c('red','blue'),lwd=3,lty=c(2,1))
-
-
+par(las = 1, family='serif', mfrow=c(1,2))
 hist(log10(pigmt_data$parasitaemia+lambda_para)[sq_ind], freq = F,
      breaks = seq(0,7,by=.5), main = 'SEAQUAMAT', xaxt='n', yaxt='n',
      xlab = 'Parasitaemia on admission', ylab='',ylim=c(0,.6))
-axis(1, at = 0:6, labels = 10^(0:6))
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+
 ind_na = is.na(pigmt_data$pig_neut)
 lines(density(log10(pigmt_data$parasitaemia+lambda_para)[ind_na&sq_ind],
               na.rm = T),lwd=3,col='blue')
@@ -138,7 +141,12 @@ legend('topleft', legend = c('Readable','Not readable'),
 hist(log10(pigmt_data$parasitaemia+lambda_para)[aq_ind], freq = F,
      breaks = seq(0,7,by=.5), main = 'AQUAMAT', xaxt='n', yaxt='n',
      xlab = 'Parasitaemia on admission', ylab='',ylim=c(0,.6))
-axis(1, at = 0:6, labels = 10^(0:6))
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+
 ind_na = is.na(pigmt_data$pig_neut)
 lines(density(log10(pigmt_data$parasitaemia+lambda_para)[ind_na&aq_ind],
               na.rm = T),lwd=3,col='blue')
@@ -157,6 +165,25 @@ Data summaries
 ```{r}
 xx=aggregate(outcome ~ meta_code, pigmt_data, mean)
 xx$outcome = round(xx$outcome*100,1)
+print(xx)
+
+
+xx=aggregate(age ~ study, pigmt_data, quantile, probs=c(0,.5,1))
+xx$age = round(xx$age,1)
+rownames(xx$age)=xx$study
+print(xx$age)
+
+xx=aggregate(coma ~ study, pigmt_data, mean)
+xx$coma = round(xx$coma*100)
+print(xx)
+
+xx=aggregate(prop_pigneut ~ study, pigmt_data, function(x) sum(!is.na(x)))
+print(xx)
+
+xx=aggregate(prop_pigmono ~ study, pigmt_data, function(x) sum(!is.na(x)))
+print(xx)
+
+xx=aggregate(parasitaemia ~ study, pigmt_data, function(x) sum(!is.na(x)))
 print(xx)
 
 xx=aggregate(outcome ~ meta_code, pigmt_data[!is.na(pigmt_data$pig_neut),], mean)
@@ -624,28 +651,110 @@ mtext(text = paste('SEAQUAMAT (n=',
 ```
 
 
+## Overall model
+### PMNs
+
+```{r}
+ind_not_na_neut = !is.na(pigmt_data$prop_pigneut)
+ind_MORU = aqViet_ind | aq_ind | sq_ind
+writeLines(sprintf('We have PMN data on a total of %s patients from the 3 MORU trials', sum(ind_MORU & ind_not_na_neut)))
+```
+
+Mixed effects for site, country and study
+
+```{r}
+# box-cox transformation
+mod_all=glmer(outcome ~ log10(prop_pigneut+lambda_pigment) +
+                (1|site:country:study), 
+              family='binomial', data = pigmt_data[ind_MORU,])
+summary(mod_all)$coefficients
+writeLines('Odds-ratio for death for a tenfold increase in PMNs (box-cox transformation):')
+round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
+
+# box-cox transformation - just using >0 data
+writeLines('Odds-ratio for death for a tenfold increase in PMNs (box-cox transformation only >0 counts):')
+mod_all_pos=glmer(outcome ~ log10(prop_pigneut) + 
+                    (1|site:country:study), 
+                  family='binomial', 
+                  data = pigmt_data[ind_MORU&pigmt_data$prop_pigneut>0, ])
+exp(summary(mod_all_pos)$coefficients)[2,1]
+
+
+writeLines('Odds-ratio for death for PMNs > 5%:')
+mod_all=glmer(outcome ~ as.numeric(prop_pigneut > 0.05) + 
+                (1|site:country:study), 
+              family='binomial', data = pigmt_data[ind_MORU,])
+summary(mod_all)$coefficients
+round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
+```
+
+
+### PMMs
+
+```{r}
+ind_not_na_mono = !is.na(pigmt_data$prop_pigmono)
+writeLines(sprintf('We have PMN data on a total of %s patients from the 3 MORU trials', sum(ind_MORU & ind_not_na_mono)))
+```
+
+Mixed effects for site, country and study
+
+```{r}
+# box-cox transformation
+mod_all=glmer(outcome ~ log10(prop_pigmono+lambda_pigment) +
+                (1|site:country:study), 
+              family='binomial', data = pigmt_data[ind_MORU,])
+summary(mod_all)$coefficients
+writeLines('Odds-ratio for death for a tenfold increase in PMMs (box-cox transformation):')
+round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
+
+# box-cox transformation - just using >0 data
+writeLines('Odds-ratio for death for a tenfold increase in PMMs (box-cox transformation only >0 counts):')
+mod_all_pos=glmer(outcome ~ log10(prop_pigmono) + 
+                    (1|site:country:study), 
+                  family='binomial', 
+                  data = pigmt_data[ind_MORU&pigmt_data$prop_pigmono>0, ])
+exp(summary(mod_all_pos)$coefficients)[2,1]
+
+
+writeLines('Odds-ratio for death for PMMs > 5%:')
+mod_all=glmer(outcome ~ as.numeric(prop_pigmono > 0.05) + 
+                (1|site:country:study), 
+              family='binomial', data = pigmt_data[ind_MORU,])
+summary(mod_all)$coefficients
+round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
+```
+
+# Meta-analysis
+
 ## Prognostic value in African children
 
 ```{r}
-Af_ind = aq_ind|smac_ind
+Af_ind = aq_ind|smac_ind|lyke_ind
+
+writeLines(sprintf('We have data on pigment containing PMNs in %s African children',sum(Af_ind & !is.na(pigmt_data$prop_pigneut))))
+
+writeLines(sprintf('We have data on pigment containing PMMs in %s African children',sum(Af_ind & !is.na(pigmt_data$prop_pigmono))))
+
+writeLines(sprintf('We have data on parasite densities in %s African children',sum(Af_ind & !is.na(pigmt_data$parasitaemia))))
+
 ### Models using Parasite counts
 mod_PCT = gam(outcome ~ s(log10(parasitaemia+lambda_para),k=4) + 
-                   s(country_f, bs='re')+s(study_f, bs='re'), 
-                 family='binomial', 
+                s(country_f, bs='re')+s(study_f, bs='re'), 
+              family='binomial', 
               data = pigmt_data[Af_ind, ])
 summary(mod_PCT)$s.pv
 
 
 ## Neutrophils
 mod_PN = gam(outcome ~ s(log10(prop_pigneut+lambda_pigment),k=4) + 
-                  s(country_f, bs='re')+s(study_f, bs='re'), 
-                family='binomial', data = pigmt_data[Af_ind, ])
+               s(country_f, bs='re')+s(study_f, bs='re'), 
+             family='binomial', data = pigmt_data[Af_ind, ])
 summary(mod_PN)$s.pv
 
 ## Monocytes
 mod_PM = gam(outcome ~ s(log10(prop_pigmono+lambda_pigment),k=4) + 
-                  s(country_f, bs='re')+s(study_f, bs='re'), 
-                family='binomial', data = pigmt_data[Af_ind, ])
+               s(country_f, bs='re')+s(study_f, bs='re'), 
+             family='binomial', data = pigmt_data[Af_ind, ])
 summary(mod_PM)$s.pv
 
 ```
@@ -658,7 +767,7 @@ layout(mat = matrix(c(1,2,2,3,4,4,5,6,6),nrow = 3,byrow = F))
 xs = seq(log10(lambda_para),6.5,length.out = 100)
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$parasitaemia[Af_ind]+50),
-     main ='', xlab='',xaxt='n',xlim = range(xs),
+     main ='', xlab='',xaxt='n',xlim = range(xs)+c(-.1,.1),
      breaks = 30, ylab ='n')
 mtext(text = paste0('n=',sum(notna_para&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
@@ -691,7 +800,7 @@ xs = (0: round(100*quantile(pigmt_data$prop_pigneut,
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigneut[Af_ind]+lambda_pigment),
      main ='', xlab='', xaxt='n',ylab ='n',
-     xlim = range(log10(xs+lambda_pigment)), breaks = 20)
+     xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20)
 mtext(text = paste0('n=',sum(notna_neut&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
 par(mar = c(5,6,0,4))
@@ -702,7 +811,7 @@ my_preds=predict(mod_PN,
                                     country_f = 0,
                                     study_f=0),
                  exclude = c("s(country_f)","study_f)"),
-                             se.fit = T)
+                 se.fit = T)
 plot(log10(xs+lambda_pigment), 
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
@@ -724,7 +833,7 @@ xs = (0: round(100*quantile(pigmt_data$prop_pigmono,
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigmono[Af_ind]+lambda_pigment),
      main ='', xlab='', xaxt='n',ylab ='n',
-     xlim = range(log10(xs+lambda_pigment)), breaks = 20)
+     xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20)
 mtext(text = paste0('n=',sum(notna_mono&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
 par(mar = c(5,6,0,4))
@@ -762,6 +871,8 @@ aqViet_ind = pigmt_data$study == 'AQ'
 aq_ind = pigmt_data$study == 'AQUAMAT'  
 sq_ind = pigmt_data$study == 'SEAQUAMAT'
 smac_ind = pigmt_data$study == 'SMAC'
+lyke_ind = pigmt_data$study == 'Lyke et al'
+Af_ind = aq_ind|smac_ind|lyke_ind
 ```
 
 
@@ -865,29 +976,37 @@ forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
 ```
 
 
-Mixed effect model
+
+Just look at SMAC - I mean what the hell were they thinking???
+
 ```{r}
-# box-cox transformation
-mod_all=glmer(outcome ~ log10(prop_pigneut+lambda_pigment) +
-                (1|site:country:study), 
-              family='binomial', data = pigmt_data)
-summary(mod_all)$coefficients
-round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
+ind_not_na = !is.na(pigmt_data$prop_pigneut) & !is.na(pigmt_data$outcome) & pigmt_data$study=='SMAC'
+ind_pos = pigmt_data$prop_pigneut > 0.05
+event_e = c()
+n_e = c()
+event_c = c()
+n_c = c()
+lab = c()
+for(ss in unique(pigmt_data$meta_code)){
+  ind = pigmt_data$meta_code==ss
+  my_study = ss
+  event_e = c(event_e, 
+              sum(pigmt_data$outcome[ind_not_na&ind&ind_pos]))
+  n_e = c(n_e, sum(ind_not_na&ind&ind_pos))
+  event_c = c(event_c, sum(pigmt_data$outcome[ind_not_na&ind& !ind_pos]))
+  n_c = c(n_c, sum(ind_not_na&ind& !ind_pos))
+  lab = c(lab, ss)           
+}
 
-# box-cox transformation - just using >0 data
-mod_all_pos=glmer(outcome ~ log10(prop_pigneut) + 
-                    (1|site:country:study), 
-                  family='binomial', 
-                  data = pigmt_data[pigmt_data$prop_pigneut>0, ])
-exp(summary(mod_all_pos)$coefficients)[2,1]
-
-
-
-mod_all=glmer(outcome ~ as.numeric(prop_pigneut > 0.05) + 
-                (1|site:country:study), 
-              family='binomial', data = pigmt_data)
-summary(mod_all)$coefficients
-round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
+mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
+            n.c = n_c, studlab = lab,
+            sm = 'OR',
+            comb.random = T)
+par(family='serif')
+forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
+       rightcols=c("effect", "ci", "w.random"),
+       test.overall.random=T,
+       digits.pval=1, scientific.pval=T)
 ```
 
 
@@ -939,77 +1058,109 @@ mod_all=glmer(outcome ~ log10(prop_pigmono+lambda_pigment) +
 summary(mod_all)$coefficients
 ```
 
-## Prognostic value of pigmented monocytes in addition to severity data
+# Prognostic value of pigmented monocytes in addition to severity data
 
+## Available clinical and lab data
 
-AQ VIETNAM
+```{r}
+# clinical variables
+writeLines('Coma:')
+table(pigmt_data$study,is.na(pigmt_data$coma))
+writeLines('Acidosis:')
+table(pigmt_data$study,is.na(pigmt_data$acidosis))
+writeLines('Respiratory rate:')
+table(pigmt_data$study,is.na(pigmt_data$resp_rate))
+
+# lab variables
+writeLines('Lactate:')
+table(pigmt_data$study,is.na(pigmt_data$lactate))
+writeLines('Glucose:')
+table(pigmt_data$study,is.na(pigmt_data$hypoglycaemia))
+writeLines('Bun:')
+table(pigmt_data$study,is.na(pigmt_data$bun))
+
+pigmt_data$PMNs5 = as.numeric(pigmt_data$prop_pigneut > 0.05)
+pigmt_data$PMMs5 = as.numeric(pigmt_data$prop_pigmono > 0.05)
+```
+
+## Fit models
+
+### AQ VIETNAM
+
+Clinical: coma and respiratory rate
+Lab: lactate and glucose
+
 ```{r}
 #****** Neutrophils *********
 # Model of prognostic value without severity included
-mod_AQV_neut_alone = glm(outcome ~ as.numeric(prop_pigneut>0.05),
+mod_AQV_neut_alone = glm(outcome ~ PMNs5,
                          family='binomial', 
                          data = pigmt_data[aqViet_ind, ])
 summary(mod_AQV_neut_alone)$coefficients
 
 # Model of prognostic value with clinical markers of severity included
-mod_AQV_neut_clinical = glm(outcome ~ as.numeric(prop_pigneut>0.05) + 
-                              coma + hb + resp_rate, 
+mod_AQV_neut_clinical = glm(outcome ~ PMNs5 + 
+                              coma + resp_rate, 
                             family='binomial', 
                             data = pigmt_data[aqViet_ind, ])
 summary(mod_AQV_neut_clinical)$coefficients
 
 # Model of prognostic value with clinical & lab markers of severity included
-mod_AQV_neut_lab = glm(outcome ~ as.numeric(prop_pigneut>0.05) +
-                         coma + hb  + resp_rate + lactate, 
+mod_AQV_neut_lab = glm(outcome ~ PMNs5 +
+                         coma + resp_rate + lactate + hypoglycaemia, 
                        family='binomial', 
                        data = pigmt_data[aqViet_ind, ])
 summary(mod_AQV_neut_lab)$coefficients
 
 #****** Monocytes *********
 # Model of prgnostic value without severity included
-mod_AQV_mono_alone = glm(outcome ~ as.numeric(prop_pigmono>0.05), 
+mod_AQV_mono_alone = glm(outcome ~ PMMs5, 
                          family='binomial', 
                          data = pigmt_data[aqViet_ind, ])
 summary(mod_AQV_mono_alone)$coefficients
 
 # Model of prognostic value with clinical markers of severity included
-mod_AQV_mono_clinical = glm(outcome ~ as.numeric(prop_pigmono>0.05) + 
-                              coma + hb + acidosis + resp_rate, 
+mod_AQV_mono_clinical = glm(outcome ~ PMMs5 + 
+                              coma + resp_rate, 
                             family='binomial', 
                             data = pigmt_data[aqViet_ind, ])
 summary(mod_AQV_mono_clinical)$coefficients
 
 # Model of prognostic value with clinical & lab markers of severity included
-mod_AQV_mono_lab = glm(outcome ~ as.numeric(prop_pigmono>0.05) + 
-                         coma + hb + acidosis + resp_rate + base_excess_imp,
+mod_AQV_mono_lab = glm(outcome ~ PMMs5 + 
+                         coma + resp_rate + lactate + hypoglycaemia,
                        family='binomial', 
                        data = pigmt_data[aqViet_ind, ])
 summary(mod_AQV_mono_lab)$coefficients
 ```
 
 
-SEAQUAMAT
+### SEAQUAMAT
+
+Clinical: coma and acidosis
+Lab: BUN and glucose
+
 ```{r}
 #****** Neutrophils *********
 # Model of prgnostoc value without severity included
-mod_SQ_neut_alone = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
+mod_SQ_neut_alone = glmer(outcome ~ PMNs5 + 
                             (1|site:country), 
                           family='binomial', 
                           data = pigmt_data[sq_ind, ])
 summary(mod_SQ_neut_alone)$coefficients[2,]
 
 # Model of prognostic value with clinical markers of severity included
-mod_SQ_neut_clinical = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
-                               coma + age + acidosis + resp_rate +
+mod_SQ_neut_clinical = glmer(outcome ~ PMNs5 + 
+                               coma + acidosis +
                                (1|site:country), 
                              family='binomial', 
                              data = pigmt_data[sq_ind, ])
 summary(mod_SQ_neut_clinical)$coefficients[2,]
 
 # Model of prognostic value with clinical & lab markers of severity included
-mod_SQ_neut_lab = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
-                          coma + age + acidosis + resp_rate + base_excess_imp +
-                          + (1|site:country), 
+mod_SQ_neut_lab = glmer(outcome ~ PMNs5 + 
+                          coma + acidosis + bun +
+                          hypoglycaemia + (1|site:country), 
                         family='binomial', 
                         data = pigmt_data[sq_ind, ])
 summary(mod_SQ_neut_lab)$coefficients[2,]
@@ -1017,71 +1168,75 @@ summary(mod_SQ_neut_lab)$coefficients[2,]
 
 #****** Monocytes *********
 # Model of prgnostoc value without severity included
-mod_SQ_mono_alone = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
+mod_SQ_mono_alone = glmer(outcome ~ PMMs5 + 
                             (1|site:country), 
                           family='binomial', 
                           data = pigmt_data[sq_ind, ])
 summary(mod_SQ_mono_alone)$coefficients
 
 # Model of prognostic value with clinical markers of severity included
-mod_SQ_mono_clinical = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
-                               coma + age + acidosis + resp_rate + 
+mod_SQ_mono_clinical = glmer(outcome ~ PMMs5 + 
+                               coma + acidosis + 
                                (1|site:country), 
                              family='binomial', 
                              data = pigmt_data[sq_ind, ])
 summary(mod_SQ_mono_clinical)$coefficients
 
 # Model of prognostic value with clinical & lab markers of severity included
-mod_SQ_mono_lab = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
-                          coma + age + acidosis + resp_rate + base_excess_imp  +
-                          (1|site:country), 
+mod_SQ_mono_lab = glmer(outcome ~ PMMs5 + 
+                          coma + acidosis + bun +
+                          hypoglycaemia + (1|site:country), 
                         family='binomial', 
                         data = pigmt_data[sq_ind, ])
 summary(mod_SQ_mono_lab)$coefficients
 ```
 
-AQUAMAT
+### AQUAMAT
+
+Clinical: coma and acidosis
+Lab: BUN and glucose
+
 ```{r}
 #****** Neutrophils *********
 # Model of prognostic value without severity included
-mod_AQ_neut_alone = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + (1|site:country), 
+mod_AQ_neut_alone = glmer(outcome ~ PMNs5 + (1|site:country), 
                           family='binomial', data = pigmt_data[aq_ind, ])
 summary(mod_AQ_neut_alone)$coefficients
 
 # Model of prognostic value with clinical markers of severity included
-mod_AQ_neut_clinical = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
-                               coma + age + acidosis + resp_rate + 
+mod_AQ_neut_clinical = glmer(outcome ~ PMNs5 + 
+                               coma + acidosis + 
                                (1|site:country), 
                              family='binomial', 
                              data = pigmt_data[aq_ind, ])
 summary(mod_AQ_neut_clinical)$coefficients
 
 # Model of prognostic value with clinical & lab markers of severity included
-mod_AQ_neut_lab = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
-                          coma + age + acidosis + resp_rate + base_excess_imp +
-                          (1|site:country), 
+mod_AQ_neut_lab = glmer(outcome ~ PMNs5 + 
+                          coma + acidosis + bun +
+                          hypoglycaemia + (1|site:country), 
                         family='binomial', 
                         data = pigmt_data[aq_ind, ])
 summary(mod_AQ_neut_lab)$coefficients
 
 #****** Monocytes *********
 # Model of prognostic value without severity included
-mod_AQ_mono_alone = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + (1|site:country), 
+mod_AQ_mono_alone = glmer(outcome ~ PMMs5 + (1|site:country), 
                           family='binomial', data = pigmt_data[aq_ind, ])
 summary(mod_AQ_mono_alone)$coefficients
 
 # Model of prognostic value with clinical markers of severity included
-mod_AQ_mono_clinical = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
-                               coma + age + acidosis + resp_rate +
+mod_AQ_mono_clinical = glmer(outcome ~ PMMs5 + 
+                               coma + acidosis +
                                (1|site:country), 
                              family='binomial', 
                              data = pigmt_data[aq_ind, ])
 summary(mod_AQ_mono_clinical)$coefficients
 
 # Model of prognostic value with clinical & lab markers of severity included
-mod_AQ_mono_lab = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
-                          coma + age + acidosis + resp_rate + base_excess_imp +
-                          (1|site:country), 
+mod_AQ_mono_lab = glmer(outcome ~ PMMs5 + 
+                          coma + acidosis + bun +
+                          hypoglycaemia + (1|site:country), 
                         family='binomial', 
                         data = pigmt_data[aq_ind, ])
 summary(mod_AQ_mono_lab)$coefficients
@@ -1089,27 +1244,30 @@ summary(mod_AQ_mono_lab)$coefficients
 ```
 
 
+### SMAC
 
-SMAC
+Clinical: coma and acidosis (deep breathing)
+Lab: lactate and glucose
+
 ```{r}
 #**** Neutrophils *****
 # Model of prognostic value without severity included
-mod_SMAC_neut_alone = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + (1|site:country),
+mod_SMAC_neut_alone = glmer(outcome ~ PMNs5 + (1|site:country),
                             family='binomial', 
                             data = pigmt_data[smac_ind, ])
 summary(mod_SMAC_neut_alone)$coefficients
 
 # Model of prognostic value with clinical markers of severity included
-mod_SMAC_neut_clinical = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
-                                 coma + age + acidosis + resp_rate + (1|site:country), 
+mod_SMAC_neut_clinical = glmer(outcome ~ PMNs5 + 
+                                 coma + acidosis + (1|site:country), 
                                family='binomial', 
                                data = pigmt_data[smac_ind, ])
 summary(mod_SMAC_neut_clinical)$coefficients
 
 # Model of prognostic value with clinical & lab markers of severity included
-mod_SMAC_neut_lab = glmer(outcome ~ as.numeric(prop_pigneut>0.05) + 
-                            coma + age + acidosis + resp_rate + base_excess_imp +
-                            (1|site:country), 
+mod_SMAC_neut_lab = glmer(outcome ~ PMNs5 + 
+                            coma + acidosis + lactate +
+                            hypoglycaemia + (1|site:country), 
                           family='binomial', 
                           data = pigmt_data[smac_ind, ])
 summary(mod_SMAC_neut_lab)$coefficients
@@ -1117,33 +1275,34 @@ summary(mod_SMAC_neut_lab)$coefficients
 
 #**** Monocytes *****
 # Model of prognostic value without severity included
-mod_SMAC_mono_alone = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + (1|site:country),
+mod_SMAC_mono_alone = glmer(outcome ~ PMMs5 + (1|site:country),
                             family='binomial', 
                             data = pigmt_data[smac_ind, ])
 summary(mod_SMAC_mono_alone)$coefficients
 
 # Model of prognostic value with clinical markers of severity included
-mod_SMAC_mono_clinical = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
-                                 coma + age + acidosis + resp_rate +
+mod_SMAC_mono_clinical = glmer(outcome ~ PMMs5 + 
+                                 coma + acidosis +
                                  (1|site:country), 
                                family='binomial', 
                                data = pigmt_data[smac_ind, ])
 summary(mod_SMAC_mono_clinical)$coefficients
 
 # Model of prognostic value with clinical & lab markers of severity included
-mod_SMAC_mono_lab = glmer(outcome ~ as.numeric(prop_pigmono>0.05) + 
-                            coma + age + acidosis + resp_rate + base_excess_imp +
-                            (1|site:country), 
+mod_SMAC_mono_lab = glmer(outcome ~ PMMs5 + 
+                            coma + acidosis + lactate +
+                            hypoglycaemia + (1|site:country), 
                           family='binomial', 
                           data = pigmt_data[smac_ind, ])
 summary(mod_SMAC_mono_lab)$coefficients
 ```
 
+## Output
 
 Make summaries
 ```{r}
 #**Neutrophils**
-my_var = 'as.numeric(prop_pigneut > 0.05)'
+my_var = 'PMNs5'
 coefs_non_adj = data.frame(
   rbind(summary(mod_AQV_neut_alone)$coefficients[my_var, 1:2],
         summary(mod_SQ_neut_alone)$coefficients[my_var, 1:2],
@@ -1172,7 +1331,7 @@ coefs_adj2$lowerCI = coefs_adj2$Estimate-1.96*coefs_adj2$Std..Error
 
 
 #**Monocytes**
-my_var = 'as.numeric(prop_pigmono > 0.05)'
+my_var = 'PMMs5'
 coefs_non_adj_PM = data.frame(
   rbind(summary(mod_AQV_mono_alone)$coefficients[my_var, 1:2],
         summary(mod_SQ_mono_alone)$coefficients[my_var, 1:2],
@@ -1276,36 +1435,295 @@ mtext(text = 'B: >5% pigment containing PMMs',side = 3,adj = 0, cex = 1.5, line=
 ```
 
 
+# Parasitaemia and pigment
+
+```{r parasites_pigment}
+par(las=1, mfrow=c(2,2),family='serif',cex.lab=1.3, cex.axis=1.3)
+plot(log10(pigmt_data$parasitaemia+lambda_para),
+     jitter(log10(pigmt_data$prop_pigneut+lambda_pigment),
+            amount = 0.02),ylab = 'Pigment containing PMNs (%)',
+     xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
+     pch='.',xaxt='n', yaxt='n',panel.first=grid())
+axis(2, at = log10(c(0,1,2,5,10,20,40)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20,40))
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+
+abline(h = log10(0.05+lambda_pigment),lty=2,lwd=2, col='red')
+
+mod = glmer(PMNs5 ~ log10(parasitaemia+lambda_para) + (1 |site:country:study), family='binomial', data = pigmt_data)
+summary(mod)$coefficients
+xs = 10^(seq(1.5, 6, length.out = 100))
+
+preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+plot(log10(xs), preds, type='l',
+     ylab = 'Pigment containing PMNs >5% (probability)',
+     xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
+     xaxt='n', panel.first=grid(),lwd=3)
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+
+#### Monocytes
+plot(log10(pigmt_data$parasitaemia+lambda_para),
+     jitter(log10(pigmt_data$prop_pigmono+lambda_pigment),
+            amount = 0.02),ylab = 'Pigment containing PMMs (%)',
+     xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
+     pch='.',xaxt='n', yaxt='n',panel.first=grid())
+axis(2, at = log10(c(0,1,2,5,10,20,40)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20,40))
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+
+abline(h = log10(0.05+lambda_pigment),lty=2,lwd=2, col='red')
+
+mod = glmer(PMMs5 ~ log10(parasitaemia+lambda_para) + (1 |site:country:study), family='binomial', data = pigmt_data)
+summary(mod)$coefficients
+xs = 10^(seq(1.5, 6, length.out = 100))
+
+preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+plot(log10(xs), preds, type='l',
+     ylab = 'Pigment containing PMNs >5% (probability)',
+     xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
+     xaxt='n', panel.first=grid(),lwd=3)
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+par(mfrow=c(1,2))
+
+mod = glmer(as.numeric(prop_pigneut>0) ~ log10(parasitaemia+lambda_para) + (1 |site:country:study), family='binomial', data = pigmt_data)
+summary(mod)$coefficients
+
+preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+plot(log10(xs), preds, type='l',
+     ylab = 'Pigment containing PMNs >0% (probability)',
+     xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
+     xaxt='n', panel.first=grid(),lwd=3)
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+
+
+mod = glmer(as.numeric(prop_pigmono>0) ~ log10(parasitaemia+lambda_para) + (1 |site:country:study), family='binomial', data = pigmt_data)
+summary(mod)$coefficients
+
+preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+plot(log10(xs), preds, type='l',
+     ylab = 'Pigment containing PMMs >0% (probability)',
+     xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
+     xaxt='n', panel.first=grid(),lwd=3)
+axis(1, at = 2:6, labels = c(expression(10^2),
+                             expression(10^3),
+                             expression(10^4),
+                             expression(10^5),
+                             expression(10^6)))
+```
 
 
 
-## Extra analyses
-
+# Pigment and severe anaemia
 
 ```{r}
-pigmt_data$study_f = as.factor(pigmt_data$study)
-mod = gam(outcome ~ s(log10(parasitaemia+50),k=4)+
-            s(site_f,bs='re')+s(study_f,bs='re'), family='binomial', 
-          data = pigmt_data[smac_ind|aq_ind,])
-xs = seq(log10(50),6.2,length.out = 100)
-my_preds=predict(mod,
-                 data.frame(parasitaemia=10^(xs),
-                            site_f = -1,
-                            study_f= -1), 
-                 exclude = "s(site_f)", se.fit = T)
+pigmt_data$SMA = as.numeric(pigmt_data$hb<5)
+table(SMA=pigmt_data$SMA, study=pigmt_data$study)
+par(las=1, mfrow=c(2,2))
+plot(jitter(log10(pigmt_data$prop_pigneut[Af_ind]+lambda_pigment),amount = 0.05),xaxt='n',
+     jitter(pigmt_data$hb[Af_ind],amount = 0.02),
+     pch='.',ylim = c(2,13),
+     ylab='Haemoglobin (g/dL)', xlab = 'Pigment contaning PMNs (%)')
+axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20))
+mod = gam(hb ~ s(log10(prop_pigneut+lambda_pigment),k=5),
+          data = pigmt_data[Af_ind, ])
+summary(mod)
+xs = (0: round(100*quantile(pigmt_data$prop_pigneut, 
+                            probs = .99, na.rm = T)))/100
+lines(log10(xs+lambda_pigment), predict(mod, data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment)),lwd=3,col='red')
 
-par(las=1,mar=c(0,6,3,3))
-layout(mat = matrix(c(1,2,2,2),nrow = 4))
-hist(log10(pigmt_data$parasitaemia[smac_ind|aq_ind]+50),breaks = 40,
-     xlim = range(xs), 
-     main='Parasitaemia and death in 30000 African children',
-     xaxt='n',xlab='',yaxt='n',ylab='')
-par(mar=c(5,6,0,3))
-plot(xs, 100*inv.logit(my_preds$fit), type='l',panel.first = grid(),
-     ylim = c(0,20), xlab='Parasite density (per uL)')
-polygon(x = c(xs, rev(xs)),
-        y = 100*inv.logit(c((my_preds$fit)+1.96*my_preds$se.fit,
-                            rev((my_preds$fit)-1.96*my_preds$se.fit))),
-        border = NA, col = adjustcolor('grey',alpha.f = .3))
+
+plot(jitter(log10(pigmt_data$prop_pigmono[Af_ind]+lambda_pigment),amount = 0.05),xaxt='n',
+     jitter(pigmt_data$hb[Af_ind],amount = 0.02),
+     pch='.',ylim = c(2,13),
+     ylab='Haemoglobin (g/dL)', xlab = 'Pigment contaning PMMs (%)')
+axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
+     labels = c(0,1,5,20,40))
+mod = gam(hb ~ s(log10(prop_pigmono+lambda_pigment),k=5)+
+            s(country_f,bs='re'),
+          data = pigmt_data[Af_ind, ])
+summary(mod)
+
+xs = (0: round(100*quantile(pigmt_data$prop_pigmono, 
+                            probs = .99, na.rm = T)))/100
+lines(log10(xs+lambda_pigment), predict(mod, data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment,country_f= -1),exclude = 'country_f'),lwd=3,col='red')
+
+
+# SMA
+
+mod = gam(SMA ~ s(log10(prop_pigneut+lambda_pigment),k=3)+
+            s(country_f, bs='re'),
+          family = 'binomial',
+          data = pigmt_data[Af_ind, ])
+summary(mod)
+xs = (0: round(100*quantile(pigmt_data$prop_pigneut[Af_ind], 
+                            probs = .99, na.rm = T)))/100
+preds = predict(mod, data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment,
+                                country_f= -1),
+                type='response',se.fit = T,exclude='country_f')
+plot(log10(xs+lambda_pigment),
+     preds$fit,lwd=3,col='red',type='l',xaxt='n')
+axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20))
+
+mod = gam(SMA ~ s(log10(prop_pigmono+lambda_pigment),k=3)+
+            s(country_f, bs='re'),
+          family = 'binomial',
+          data = pigmt_data[Af_ind, ])
+summary(mod)
+xs = (0: round(100*quantile(pigmt_data$prop_pigmono[Af_ind], 
+                            probs = .99, na.rm = T)))/100
+preds = predict(mod, data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment,
+                                country_f= -1),
+                type='response',se.fit = T,exclude='country_f')
+plot(log10(xs+lambda_pigment),
+     preds$fit,lwd=3,col='red',type='l',xaxt='n')
+axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20))
+
 ```
+
+
+
+# HRP2 analysis - AQUAMAT
+
+This can only be run with access to the HRP2 data
+```{r }
+hrp2_aq = read.csv('~/Dropbox/Datasets/AQUAMAT/AQM_childHRP2.csv')
+pigmt_data = pigmt_data %>% filter(study == 'AQUAMAT')
+
+pigmt_data$hrp2 = NA
+for(i in 1:nrow(pigmt_data)){
+  id = pigmt_data$id[i]
+  if(id %in% hrp2_aq$studynumber){
+    pigmt_data$hrp2[i] = hrp2_aq$hrp2_plasma[hrp2_aq$studynumber==id]
+  }
+}
+```
+
+
+```{r }
+pigmt_data = 
+  pigmt_data %>% filter(!is.na(hrp2),
+                        !is.na(prop_pigneut) | !is.na(prop_pigmono))
+
+pigmt_data$SM = as.numeric(pigmt_data$hrp2 >= 900)
+
+sum(!is.na(pigmt_data$hrp2) & !is.na(pigmt_data$prop_pigneut))
+sum(!is.na(pigmt_data$hrp2) & !is.na(pigmt_data$prop_pigmono))
+
+
+mod=glmer(outcome ~ PMNs5 * SM + (1 | site:country), family='binomial', data = pigmt_data)
+summary(mod)
+```
+
+
+
+```{r pigment_hrp2}
+ymax = quantile(pigmt_data$hrp2, probs = .995)
+par(las = 1, mfrow=c(2, 2), mar = c(5,5,2,2), family='serif',cex.lab=1.3, cex.axis=1.3)
+xs = jitter(log10(pigmt_data$prop_pigneut+lambda_pigment),amount = .02)
+plot(xs,log10(pigmt_data$hrp2+1), xlim = c(-2.4, log10(0.4+lambda_pigment)),
+     col = adjustcolor(c('blue','red')[pigmt_data$outcome+1],
+                       alpha.f = c(.2)),
+     pch=20, panel.first=grid(),ylim = log10(c(1, ymax)),
+     yaxt = 'n', xaxt='n', ylab='PfHRP2 (ng/mL)',
+     xlab = 'Pigment containing PMNs (%)')
+axis(1, at = log10(c(0:2,5,10,20,40)/100 + lambda_pigment), labels = c(0:2,5,10,20,40))
+axis(2, at = 0:4, labels = c(1,10,
+                             expression(10^2),
+                             expression(10^3),
+                             expression(10^4)))
+legend('bottomright', fill=adjustcolor(c('blue','red'),.5), inset = 0.03,
+       legend = c('survived','died'))
+abline(h = log10(1000), v = log10(0.05+lambda_pigment), lty=2)
+
+xs = jitter(log10(pigmt_data$prop_pigmono+lambda_pigment),amount = .02)
+plot(xs, log10(pigmt_data$hrp2+1), xlim = c(-2.4, log10(0.4+lambda_pigment)),
+     col = adjustcolor(c('blue','red')[pigmt_data$outcome+1],
+                       alpha.f = c(.2)),
+     pch=20, panel.first=grid(),ylim = log10(c(1, ymax)),
+     yaxt = 'n', xaxt='n', ylab='PfHRP2 (ng/mL)',
+     xlab = 'Pigment containing PMMs (%)')
+axis(1, at = log10(c(0,3,6,10,20,40)/100+lambda_pigment), labels = c(0,3,6,10,20,40))
+axis(2, at = 0:4, labels = c(1,10,
+                             expression(10^2),
+                             expression(10^3),
+                             expression(10^4)))
+abline(h = log10(1000), v = log10(0.05+lambda_pigment), lty=2)
+
+
+
+table(SM=pigmt_data$SM, PMNs_5percent=pigmt_data$PMNs5)
+table(SM=pigmt_data$SM, PMMs_5percent=pigmt_data$PMMs5)
+
+mod_PMN_hrp2 = glmer(SM ~ log10(prop_pigneut+lambda_pigment) + (1|country_f), family='binomial', data = pigmt_data)
+
+mod_PMM_hrp2 = glmer(SM ~ log10(prop_pigmono+lambda_pigment) + (1|country_f), family='binomial', data = pigmt_data)
+
+summary(mod_PMN_hrp2)$coefficients
+summary(mod_PMM_hrp2)$coefficients
+
+xs = (0:40)/100
+
+## bootstrap uncertainty for mixed-models
+library(bootpredictlme4)
+preds_PMN = bootMer(mod_PMN_hrp2, nsim=200, 
+                    FUN=function(x)predict(x, newdata=data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment), re.form=NA))
+
+
+plot(log10(xs+lambda_pigment), 100*inv.logit(apply(preds_PMN$t,2,median)), 
+     lwd=3, xaxt='n', xlab = 'Pigment containing PMNs (%)',
+     ylab = 'PfHRP2>1000 ng/mL (%)', panel.first = grid(),
+     ylim = c(0, 100),type='l')
+axis(1, at = log10(c(0,1,2,5,10,20,40)/100 +lambda_pigment), 
+     labels = c(0,1,2,5,10,20,40))
+polygon(log10(c(xs, rev(xs))+lambda_pigment),
+        100*inv.logit(c(apply(preds_PMN$t,2,quantile,probs=0.975),
+                    rev(apply(preds_PMN$t,2,quantile,probs=0.025)))),
+        col = adjustcolor('grey',.3), border = NA)
+
+
+
+xs = (0:40)/100
+preds_PMM = bootMer(mod_PMM_hrp2, nsim=200, 
+                    FUN=function(x)predict(x, newdata=data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment), re.form=NA))
+
+plot(log10(xs+lambda_pigment),100*inv.logit(apply(preds_PMM$t,2,median)),
+     lwd=3, xaxt='n', xlab = 'Pigment containing PMMs (%)',
+     ylab = 'PfHRP2>1000 ng/mL (%)', panel.first = grid(),
+     ylim = c(0, 100),type='l')
+axis(1, at = log10(c(0,3,6,10,20,40)/100 +lambda_pigment), 
+     labels = c(0,3,6,10,20,40))
+polygon(log10(c(xs, rev(xs))+lambda_pigment),
+        100*inv.logit(c(apply(preds_PMM$t,2,quantile,probs=0.975),
+                    rev(apply(preds_PMM$t,2,quantile,probs=0.025)))),
+        col = adjustcolor('grey',.3), border = NA)
+
+
+```
+
+
+
+
 

@@ -229,6 +229,37 @@ writeLines(sprintf('The number of patients in SMAC with missing coma score data 
 
 
 
+### Lyke et al
+
+```{r}
+lyke_pig = read.csv('~/Dropbox/Datasets/Lyke_Pigment/pigment_database.csv')
+lyke_pig = filter(lyke_pig, StudyGp=='PG')
+
+LYKE_data_set = data.frame(study = 'Lyke et al',
+                           site = 'Mali',
+                           country = 'Mali',
+                           id = NA,
+                           age = lyke_pig$Age_in_mo/12,
+                           art=0,
+                           outcome = as.numeric(lyke_pig$Survived=='Died'),
+                           resp_rate = NA,
+                           hb = lyke_pig$Hb/10,
+                           base_excess = NA,
+                           hypoglycaemia = NA,
+                           acute_renal_failure=NA,
+                           bun=NA,
+                           lactate = NA,
+                           acidosis = NA,
+                           coma = as.numeric(lyke_pig$Coma=='yes'),
+                           parasitaemia = lyke_pig$Para.mm3,
+                           pig_neut = lyke_pig$Polypig,
+                           pig_neut_denom = 100,
+                           pig_mono = lyke_pig$Monopig,
+                           pig_mono_denom = 30)
+
+```
+
+
 ### Compare datasets
 
 ```{r}
@@ -392,7 +423,8 @@ my_cols = colnames(SQ_data_set)
 pigmt_data = rbind(AQViet_data_set[, my_cols],
                    SQ_data_set[,my_cols], 
                    AQ_data_set[,my_cols], 
-                   SMAC_data_set[,my_cols])
+                   SMAC_data_set[,my_cols],
+                   LYKE_data_set[,my_cols])
 save(pigmt_data, file = 'RData/Merged_pigment_data.RData')
 ```
 
