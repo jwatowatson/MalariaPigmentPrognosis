@@ -10,11 +10,6 @@ output:
 ---
 
 
-TODO list:
-
-* Have we included the adults in AQUAMAT (eg Mozambique)? Need to check data merging with clincal dataset
-* Problems with the SMAC dataset - some of the readings are weird, especially Gabon
-
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE, cache.comments = FALSE,
@@ -30,6 +25,7 @@ library(RColorBrewer)
 library(dplyr)
 library(missForest)
 library(bootpredictlme4) ## bootstrap uncertainty for mixed-models
+library(plotrix)
 
 sessionInfo()
 ```
@@ -451,7 +447,7 @@ my_preds=predict(mod_PM_SQ,
 plot(log10(xs+lambda_pigment), 
      100*inv.logit(my_preds$fit), panel.first = grid(NA, NULL),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(5,50),
-     xlab='Pigment containing PMMs (%)',type='l',lwd=3)
+     xlab='Pigment containing monocytes (%)',type='l',lwd=3)
 text(x = -1.65, y=40, labels='Asian adults\nand children',cex=2)
 abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
@@ -480,7 +476,7 @@ my_preds=predict(mod_PM_AQ,
 plot(log10(xs+lambda_pigment),
      100*inv.logit(my_preds$fit), panel.first = grid(NA, NULL),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(4,20),
-     xlab = 'Pigment containing PMMs (%)',
+     xlab = 'Pigment containing monocytes (%)',
      type='l',lwd=3)
 text(x = -1.65, y=17.5, labels='African children',cex=2)
 abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
@@ -513,7 +509,7 @@ mod_5percentMORU_PMM =
         family='binomial', data = pigmt_data[pigmt_data$study %in% c('AQ','AQUAMAT','SEAQUAMAT'), ])
 
 xx=summary(mod_5percentMORU_PMM)
-writeLines(sprintf('In the MORU data (n=%s), the odds ratio for death in those with >5%% pigment containing PMMs is %s (95%% CI %s to %s)',
+writeLines(sprintf('In the MORU data (n=%s), the odds ratio for death in those with >5%% pigment containing monocytes is %s (95%% CI %s to %s)',
                    length(xx$residuals),
                    round(exp(xx$coefficients[2,1]),2),
                    round(exp(xx$coefficients[2,1]-1.96*xx$coefficients[2,2]),2),
@@ -675,7 +671,7 @@ my_preds=predict(mod_PM_AQ,
 plot(log10(xs+lambda_pigment),
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
-     xlab = 'Pigment containing PMMs (%)',
+     xlab = 'Pigment containing monocytes (%)',
      type='l',lwd=3)
 axis(1, at = log10(c(0,1,5,10,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,10,20,40))
@@ -698,7 +694,7 @@ my_preds=predict(mod_PM_SQ,
 plot(log10(xs+lambda_pigment), 
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
-     xlab='Pigment containing PMMs (%)',type='l',lwd=3)
+     xlab='Pigment containing monocytes (%)',type='l',lwd=3)
 axis(1, at = log10(c(0,1,2,5,10,15)/100+lambda_pigment), 
      labels = c(0,1,2,5,10,15))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -750,7 +746,7 @@ round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coe
 ```
 
 
-### PMMs
+### monocytes
 
 ```{r}
 ind_not_na_mono = !is.na(pigmt_data$prop_pigmono)
@@ -765,11 +761,11 @@ mod_all=glmer(outcome ~ log10(prop_pigmono+lambda_pigment) +
                 (1|site:country:study), 
               family='binomial', data = pigmt_data[ind_MORU,])
 summary(mod_all)$coefficients
-writeLines('Odds-ratio for death for a tenfold increase in PMMs (box-cox transformation):')
+writeLines('Odds-ratio for death for a tenfold increase in monocytes (box-cox transformation):')
 round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coefficients[2,2]),2)
 
 # box-cox transformation - just using >0 data
-writeLines('Odds-ratio for death for a tenfold increase in PMMs (box-cox transformation only >0 counts):')
+writeLines('Odds-ratio for death for a tenfold increase in monocytes (box-cox transformation only >0 counts):')
 mod_all_pos=glmer(outcome ~ log10(prop_pigmono) + 
                     (1|site:country:study), 
                   family='binomial', 
@@ -777,7 +773,7 @@ mod_all_pos=glmer(outcome ~ log10(prop_pigmono) +
 exp(summary(mod_all_pos)$coefficients)[2,1]
 
 
-writeLines('Odds-ratio for death for PMMs > 5%:')
+writeLines('Odds-ratio for death for monocytes > 5%:')
 mod_all=glmer(outcome ~ as.numeric(prop_pigmono > 0.05) + 
                 (1|site:country:study), 
               family='binomial', data = pigmt_data[ind_MORU,])
@@ -794,7 +790,7 @@ Af_ind = aq_ind|smac_ind|lyke_ind
 
 writeLines(sprintf('We have data on pigment containing PMNs in %s African children',sum(Af_ind & !is.na(pigmt_data$prop_pigneut))))
 
-writeLines(sprintf('We have data on pigment containing PMMs in %s African children',sum(Af_ind & !is.na(pigmt_data$prop_pigmono))))
+writeLines(sprintf('We have data on pigment containing monocytes in %s African children',sum(Af_ind & !is.na(pigmt_data$prop_pigmono))))
 
 writeLines(sprintf('We have data on parasite densities in %s African children',sum(Af_ind & !is.na(pigmt_data$parasitaemia))))
 
@@ -912,7 +908,7 @@ my_preds=predict(mod_PM,
 plot(log10(xs+lambda_pigment), 
      100*inv.logit(my_preds$fit), panel.first = grid(NA,NULL),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
-     xlab='Pigment containing PMMs (%)',type='l',lwd=3)
+     xlab='Pigment containing monocytes (%)',type='l',lwd=3)
 abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,20,40))
@@ -993,7 +989,7 @@ plot(c(0,xxs2[,1]), 0:nrow(xxs2), pch=16, xlim = c(-0.25, 1.2),
      ylab='', yaxt='n',panel.first = grid(),
      xlab='Odds-ratio for death', xaxt='n')
 abline(v=0, lty=2, lwd=2)
-mtext(text = 'b: pigment containing PMMs',side = 3,adj = 0, cex = 1.3, 
+mtext(text = 'b: pigment containing monocytes',side = 3,adj = 0, cex = 1.3, 
       line = 1.5)
 axis(1, at = log(c(1,2,3)), labels = 1:3)
 axis(2, at = 0:nrow(xxs2), 
@@ -1009,8 +1005,14 @@ for(i in 1:nrow(xxs2)){
 ```
 
 
+```{r meta_params, echo=FALSE}
+myrightcols = c('effect')
+mymethod = 'GLMM'
+```
 
-```{r pigmented_neutrophils_5percent, fig.height=7, fig.width=7}
+
+
+```{r pigmented_neutrophils_5percent, fig.height=7, fig.width=8}
 ind_not_na = !is.na(pigmt_data$prop_pigneut) & !is.na(pigmt_data$outcome)
 ind_pos = pigmt_data$prop_pigneut > 0.05
 event_e = c()
@@ -1030,12 +1032,12 @@ for(ss in unique(pigmt_data$meta_code)){
 }
 
 mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
-            n.c = n_c, studlab = lab,method = 'GLMM',
+            n.c = n_c, studlab = lab,method = mymethod,
             sm = 'OR',
             comb.random = T)
 par(family='serif')
 forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
-       rightcols='effect',
+       rightcols=myrightcols,
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
@@ -1064,15 +1066,17 @@ for(ss in unique(pigmt_data$meta_code[pigmt_data$study=='SMAC'])){
 }
 
 mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
-            n.c = n_c, studlab = lab,
+            n.c = n_c, studlab = lab,method = mymethod,
             sm = 'OR',
             comb.random = T)
 par(family='serif')
 forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
-       rightcols='effect',
+       rightcols=myrightcols,
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
+
+Difference between children and adults? (which is mostly a difference between high and low transmission settings).
 
 
 children 
@@ -1100,11 +1104,11 @@ for(ss in unique(pigmt_data$meta_code[!is.na(pigmt_data$age) & pigmt_data$age <=
 
 mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
             n.c = n_c, studlab = lab,
-            sm = 'OR',
+            sm = 'OR',method = mymethod,
             comb.random = T)
 par(family='serif')
 forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
-       rightcols='effect',
+       rightcols=myrightcols,
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
@@ -1135,22 +1139,23 @@ for(ss in unique(pigmt_data$meta_code[!is.na(pigmt_data$age) & pigmt_data$age > 
 
 mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
             n.c = n_c, studlab = lab,
-            sm = 'OR',
+            sm = 'OR',method = mymethod,
             comb.random = T)
 par(family='serif')
 forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
-       rightcols='effect',
+       rightcols=myrightcols,
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
-Difference between children and adults? (which is a difference between high and low transmission settings)
+
+
 
 
 ```{r}
 table(pigmt_data$study, pigmt_data$age>15)
 pigmt_data$Africa = as.numeric(Af_ind)
 mod1=glmer(outcome ~ as.numeric(pig_neut > 5) + (1|meta_code),
-              family = 'binomial', data = pigmt_data)
+           family = 'binomial', data = pigmt_data)
 exp(fixef(mod1)[2])
 
 summary(glmer(outcome ~ as.numeric(pig_neut >5) * (age<15) + (1|meta_code),
@@ -1190,11 +1195,11 @@ mod=metabin(event.e = event_e,
             n.e = n_e,
             event.c = event_c,
             n.c = n_c, studlab = lab, 
-            sm = 'OR',
+            sm = 'OR',method = mymethod,
             comb.random = T)
 par(family='serif')
 forest(mod, lab.e = '>5% pPMM', lab.c = '<5% pPMM',
-       rightcols=F,
+       rightcols=myrightcols,
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
@@ -1555,7 +1560,7 @@ legend('right',
                   'Adjusted: clinical',
                   'Adjusted: clinical and lab'),
        lwd = 3, col = my_cols, pch = 17:15, cex=1.3)
-mtext(text = 'a: >5% pigment containing PMNs',side = 3,adj = 0, cex = 1.5, line=1.5)
+mtext(text = 'a: pigment containing PMNs',side = 3,adj = 0, cex = 1.5, line=1.5)
 
 
 par(mar=c(5,10,4,2), las=1)
@@ -1587,7 +1592,7 @@ for(j in 1:4){
   lines(c(coefs_adj2_PM$lowerCI[j], coefs_adj2_PM$upperCI[j]),
         c(i+epsilon, i+epsilon), lwd=2,col=my_cols[3])
 }
-mtext(text = 'b: >5% pigment containing PMMs',side = 3,adj = 0, cex = 1.5, line=1.5)
+mtext(text = 'b: pigment containing monocytes',side = 3,adj = 0, cex = 1.5, line=1.5)
 ```
 
 
@@ -1631,7 +1636,7 @@ axis(1, at = 2:6, labels = c(expression(10^2),
 #### Monocytes
 plot(log10(pigmt_data$parasitaemia+lambda_para),
      jitter(log10(pigmt_data$prop_pigmono+lambda_pigment),
-            amount = 0.02),ylab = 'Pigment containing PMMs (%)',
+            amount = 0.02),ylab = 'Pigment containing monocytes (%)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
      pch='.',xaxt='n', yaxt='n',panel.first=grid())
 axis(2, at = log10(c(0,1,2,5,10,20,40)/100 +lambda_pigment), 
@@ -1650,7 +1655,7 @@ xs = 10^(seq(1.5, 6, length.out = 100))
 
 preds=predict(mod, newdata=data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
-     ylab = 'Pigment containing PMMs >5% (probability)',
+     ylab = 'Pigment containing monocytes >5% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
      xaxt='n', panel.first=grid(),lwd=3)
 axis(1, at = 2:6, labels = c(expression(10^2),
@@ -1680,7 +1685,7 @@ summary(mod)$coefficients
 
 preds=predict(mod, newdata=data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
-     ylab = 'Pigment containing PMMs >0% (probability)',
+     ylab = 'Pigment containing monocytes >0% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
      xaxt='n', panel.first=grid(),lwd=3)
 axis(1, at = 2:6, labels = c(expression(10^2),
@@ -1718,7 +1723,7 @@ lines(log10(xs+lambda_pigment),
 plot(jitter(log10(pigmt_data$prop_pigmono[Af_ind]+lambda_pigment),amount = 0.05),xaxt='n',
      jitter(pigmt_data$hb[Af_ind],amount = 0.02),
      pch='.',ylim = c(2,13),
-     ylab='Haemoglobin (g/dL)', xlab = 'Pigment contaning PMMs (%)')
+     ylab='Haemoglobin (g/dL)', xlab = 'Pigment contaning monocytes (%)')
 axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,20,40))
 mod = gam(hb ~ s(log10(prop_pigmono+lambda_pigment),k=5)+
@@ -1800,42 +1805,7 @@ summary(mod)
 ```
 
 
-
-```{r pigment_hrp2}
-ymax = quantile(pigmt_data$hrp2, probs = .995)
-par(las = 1, mfrow=c(2, 2), mar = c(5,5,2,2), family='serif',cex.lab=1.3, cex.axis=1.3)
-xs = jitter(log10(pigmt_data$prop_pigneut+lambda_pigment),amount = .02)
-plot(xs,log10(pigmt_data$hrp2+1), xlim = c(-2.4, log10(0.4+lambda_pigment)),
-     col = adjustcolor(c('blue','red')[pigmt_data$outcome+1],
-                       alpha.f = c(.2)),
-     pch=20, panel.first=grid(),ylim = log10(c(1, ymax)),
-     yaxt = 'n', xaxt='n', ylab='PfHRP2 (ng/mL)',
-     xlab = 'Pigment containing PMNs (%)')
-axis(1, at = log10(c(0:2,5,10,20,40)/100 + lambda_pigment), labels = c(0:2,5,10,20,40))
-axis(2, at = 0:4, labels = c(1,10,
-                             expression(10^2),
-                             expression(10^3),
-                             expression(10^4)))
-legend('bottomright', fill=adjustcolor(c('blue','red'),.5), inset = 0.03,
-       legend = c('survived','died'))
-abline(h = log10(1000), v = log10(0.05+lambda_pigment), lty=2)
-
-xs = jitter(log10(pigmt_data$prop_pigmono+lambda_pigment),amount = .02)
-plot(xs, log10(pigmt_data$hrp2+1), xlim = c(-2.4, log10(0.4+lambda_pigment)),
-     col = adjustcolor(c('blue','red')[pigmt_data$outcome+1],
-                       alpha.f = c(.2)),
-     pch=20, panel.first=grid(),ylim = log10(c(1, ymax)),
-     yaxt = 'n', xaxt='n', ylab='PfHRP2 (ng/mL)',
-     xlab = 'Pigment containing PMMs (%)')
-axis(1, at = log10(c(0,3,6,10,20,40)/100+lambda_pigment), labels = c(0,3,6,10,20,40))
-axis(2, at = 0:4, labels = c(1,10,
-                             expression(10^2),
-                             expression(10^3),
-                             expression(10^4)))
-abline(h = log10(1000), v = log10(0.05+lambda_pigment), lty=2)
-
-
-
+```{r compute_CIs}
 table(SM=pigmt_data$SM, PMNs_5percent=pigmt_data$PMNs5)
 table(SM=pigmt_data$SM, PMMs_5percent=pigmt_data$PMMs5)
 
@@ -1846,41 +1816,89 @@ mod_PMM_hrp2 = glmer(SM ~ log10(prop_pigmono+lambda_pigment) + (1|country_f), fa
 summary(mod_PMN_hrp2)$coefficients
 summary(mod_PMM_hrp2)$coefficients
 
+Nsims=100
 xs = (0:40)/100
 
 
-preds_PMN = bootMer(mod_PMN_hrp2, nsim=200, 
-                    FUN=function(x)predict(x, newdata=data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment), re.form=NA))
+preds_PMN = 
+  bootMer(mod_PMN_hrp2, nsim=Nsims, 
+          FUN=function(x) {
+            predict(x, newdata=data.frame(prop_pigneut=xs,
+                                          lambda_pigment=lambda_pigment), 
+                    re.form=NA)
+          })
+preds_PMM =
+  bootMer(mod_PMM_hrp2, nsim=Nsims, 
+          FUN=function(x){
+            predict(x, newdata=data.frame(prop_pigmono=xs,
+                                          lambda_pigment=lambda_pigment), 
+                    re.form=NA)
+          })
+```
 
 
-plot(log10(xs+lambda_pigment), 100*inv.logit(apply(preds_PMN$t,2,median)), 
+
+```{r pigment_hrp2}
+ymax = quantile(pigmt_data$hrp2, probs = .995)
+par(las = 1, mfrow=c(2, 2), mar = c(5,5,2,2), family='serif',cex.lab=1.3, cex.axis=1.3)
+xs = jitter(log10(pigmt_data$prop_pigneut+lambda_pigment*2),amount = .02)
+plot(xs,log10(pigmt_data$hrp2+1), xlim = c(-2.05, log10(0.4+lambda_pigment*2)),
+     col = adjustcolor(c('blue','red')[pigmt_data$outcome+1],
+                       alpha.f = c(.2)),
+     pch=20, panel.first=grid(NA,NULL),ylim = log10(c(1, ymax)),
+     yaxt = 'n', xaxt='n', ylab='PfHRP2 (ng/mL)',
+     xlab = 'Pigment containing PMNs (%)')
+axis(1, at = log10(c(0,1,5,10,20,40)/100 + lambda_pigment*2), labels = c(0,1,5,10,20,40))
+abline(v=log10(c(0,1,5,10,20,40)/100+lambda_pigment*2), lty='dotted',  col='lightgray')
+axis(2, at = 0:4, labels = c(1,10,
+                             expression(10^2),
+                             expression(10^3),
+                             expression(10^4)))
+legend('bottomright', fill=adjustcolor(c('blue','red'),.5), inset = 0.03,
+       legend = c('survived','died'))
+abline(h = log10(1000), v = log10(0.05+lambda_pigment*2), lty=2)
+
+xs = jitter(log10(pigmt_data$prop_pigmono+lambda_pigment*10),amount = .02)
+plot(xs, log10(pigmt_data$hrp2+1), xlim = c(-1.32, log10(0.4+lambda_pigment*10)),
+     col = adjustcolor(c('blue','red')[pigmt_data$outcome+1],
+                       alpha.f = c(.2)),
+     pch=20, panel.first=grid(NA,NULL),ylim = log10(c(1, ymax)),
+     yaxt = 'n', xaxt='n', ylab='PfHRP2 (ng/mL)',
+     xlab = 'Pigment containing monocytes (%)')
+axis(1, at = log10(c(0,5,10,20,40)/100+lambda_pigment*10), labels = c(0,5,10,20,40))
+abline(v=log10(c(0,5,10,20,40)/100+lambda_pigment*10), lty='dotted',  col='lightgray')
+axis(2, at = 0:4, labels = c(1,10,
+                             expression(10^2),
+                             expression(10^3),
+                             expression(10^4)))
+abline(h = log10(1000), v = log10(0.05+lambda_pigment*10), lty=2)
+
+
+xs = (0:40)/100
+plot(log10(xs+lambda_pigment*2), 100*inv.logit(apply(preds_PMN$t,2,median)), 
      lwd=3, xaxt='n', xlab = 'Pigment containing PMNs (%)',
-     ylab = 'PfHRP2>1000 ng/mL (%)', panel.first = grid(),
+     ylab = 'PfHRP2>1000 ng/mL (%)', panel.first = grid(NA,NULL),
      ylim = c(0, 100),type='l')
-axis(1, at = log10(c(0,1,2,5,10,20,40)/100 +lambda_pigment), 
-     labels = c(0,1,2,5,10,20,40))
-polygon(log10(c(xs, rev(xs))+lambda_pigment),
+axis(1, at = log10(c(0,1,5,10,20,40)/100 +lambda_pigment*2), 
+     labels = c(0,1,5,10,20,40))
+polygon(log10(c(xs, rev(xs))+lambda_pigment*2),
         100*inv.logit(c(apply(preds_PMN$t,2,quantile,probs=0.975),
                         rev(apply(preds_PMN$t,2,quantile,probs=0.025)))),
         col = adjustcolor('grey',.3), border = NA)
+abline(v=log10(c(0,1,5,10,20,40)/100+lambda_pigment*2), lty='dotted',  col='lightgray')
 
 
-
-xs = (0:40)/100
-preds_PMM = bootMer(mod_PMM_hrp2, nsim=200, 
-                    FUN=function(x)predict(x, newdata=data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment), re.form=NA))
-
-plot(log10(xs+lambda_pigment),100*inv.logit(apply(preds_PMM$t,2,median)),
-     lwd=3, xaxt='n', xlab = 'Pigment containing PMMs (%)',
-     ylab = 'PfHRP2>1000 ng/mL (%)', panel.first = grid(),
+plot(log10(xs+lambda_pigment*10),100*inv.logit(apply(preds_PMM$t,2,median)),
+     lwd=3, xaxt='n', xlab = 'Pigment containing monocytes (%)',
+     ylab = 'PfHRP2>1000 ng/mL (%)', panel.first = grid(NA,NULL),
      ylim = c(0, 100),type='l')
-axis(1, at = log10(c(0,3,6,10,20,40)/100 +lambda_pigment), 
-     labels = c(0,3,6,10,20,40))
-polygon(log10(c(xs, rev(xs))+lambda_pigment),
+axis(1, at = log10(c(0,5,10,20,40)/100 +lambda_pigment*10), 
+     labels = c(0,5,10,20,40))
+polygon(log10(c(xs, rev(xs))+lambda_pigment*10),
         100*inv.logit(c(apply(preds_PMM$t,2,quantile,probs=0.975),
                         rev(apply(preds_PMM$t,2,quantile,probs=0.025)))),
         col = adjustcolor('grey',.3), border = NA)
-
+abline(v=log10(c(0,5,10,20,40)/100+lambda_pigment*10), lty='dotted',  col='lightgray')
 
 ```
 
