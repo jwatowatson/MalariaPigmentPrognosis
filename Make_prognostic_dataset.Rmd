@@ -14,7 +14,7 @@ library(dplyr)
 
 ## Load all datasets
 
-Conventions for dataset:
+Conventions for merged dataset:
 
 * Outcome: died is encoded as 1
 * Age: in years
@@ -92,13 +92,10 @@ table(ind)
 ```{r}
 SQ_clinical = haven::read_sav('~/Dropbox/Datasets/SEAQUAMAT/seaquamat stage 3.sav')
 SQ_Pig = read.csv('~/Dropbox/Datasets/SEAQUAMAT/Merged_pigmentdata_SQ.csv')
-SQ_Pig$ID[which(!SQ_Pig$ID %in% SQ_clinical$studyno)]
-SQ_Pig = SQ_Pig[!duplicated(SQ_Pig$ID), ]
-SQ_Pig = SQ_Pig[SQ_Pig$ID %in% SQ_clinical$studyno, ]
-SQ_Pig = dplyr::arrange(SQ_Pig, ID)
-SQ_clinical = SQ_clinical %>% filter(studyno %in% SQ_Pig$ID) %>% arrange(studyno)
+SQ_Pig[!SQ_Pig$ID %in% SQ_clinical$studyno,]
+SQ_clinical = merge(SQ_clinical, SQ_Pig, by.x = 'studyno', by.y = 'ID', all.x=T)
+
 SQ_clinical$site = apply(SQ_clinical[,c('country','hospital')],1,function(x) paste(x[1], x[2], sep=': '))
-all(SQ_clinical$studyno == SQ_Pig$ID)
 
 ind = is.na(SQ_clinical$hbad) & !is.na(SQ_clinical$hctad)
 SQ_clinical$hbad[ind] = SQ_clinical$hctad[ind]/3
@@ -120,10 +117,10 @@ SQ_data_set = data.frame(study = 'SEAQUAMAT',
                          base_excess = SQ_clinical$bead,
                          coma = SQ_clinical$comaad,
                          parasitaemia = SQ_clinical$admpct,
-                         pig_neut = as.numeric(SQ_Pig$PosPigmentPer100Neu),
-                         pig_neut_denom = as.numeric(SQ_Pig$Neutdenominator),
-                         pig_mono = as.numeric(SQ_Pig$PosPigmentPer30Mono),
-                         pig_mono_denom = as.numeric(SQ_Pig$Monodenominator))
+                         pig_neut = as.numeric(SQ_clinical$PosPigmentPer100Neu),
+                         pig_neut_denom = as.numeric(SQ_clinical$Neutdenominator),
+                         pig_mono = as.numeric(SQ_clinical$PosPigmentPer30Mono),
+                         pig_mono_denom = as.numeric(SQ_clinical$Monodenominator))
 
 ```
 
@@ -221,10 +218,7 @@ SMAC_data_set = data.frame(study = 'SMAC',
                            pig_mono = myMergedData$MONOL200,
                            pig_mono_denom = 200)
 
-
-
 writeLines(sprintf('The number of patients in SMAC with missing coma score data is %s', sum(is.na(SMAC_data_set$coma))))
-
 ```
 
 

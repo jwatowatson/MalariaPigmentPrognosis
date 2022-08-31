@@ -18,6 +18,68 @@ TODO list:
 
 
 
+
+# Systemativ review
+
+
+```r
+sysreview=read.csv('~/Dropbox/Apps/Overleaf/Pigment_Prognosis_Severe_Malaria/SystematicReview/All_Identified_papers_merged.csv')
+table(sysreview$Screening.pass)
+```
+
+```
+## 
+##  No Yes 
+## 183  19
+```
+
+```r
+table(sysreview$ReasonExclude)
+```
+
+```
+## 
+##                                     Case report                Chickens 
+##                      19                      12                       1 
+##              Commentary                 Culture              Duplicated 
+##                       1                      33                       3 
+##                 Ex vivo        Fatal cases only                In vitro 
+##                       2                       6                      15 
+##                    Mice                  Monkey          Not falciparum 
+##                      35                       3                       7 
+##      Not severe malaria    Pigment not measured                 Puffins 
+##                      25                      12                       1 
+##                  Rabbit           Retrospective                  Review 
+##                       1                       2                      23 
+## Subcutanaeous not blood 
+##                       1
+```
+
+```r
+sum(sysreview$N..Severe.malaria.[sysreview$Screening.pass=='Yes'])
+```
+
+```
+## [1] 27958
+```
+
+```r
+median(sysreview$N..Severe.malaria.[sysreview$Screening.pass=='Yes'])
+```
+
+```
+## [1] 67
+```
+
+```r
+range(sysreview$N..Severe.malaria.[sysreview$Screening.pass=='Yes'])
+```
+
+```
+## [1]    22 26296
+```
+
+
 # Data
 
 
@@ -25,7 +87,16 @@ TODO list:
 load('RData/Merged_pigment_data.RData')
 pigmt_data$meta_code = apply(pigmt_data[, c('study','country')], 1, 
                              function(x) paste(x[1],x[2],sep=': '))
+table(pigmt_data$study)
+```
 
+```
+## 
+##         AQ    AQUAMAT Lyke et al  SEAQUAMAT       SMAC 
+##        560       5425        172       1461      26235
+```
+
+```r
 # remove patients without an outcome variable
 pigmt_data = filter(pigmt_data, !is.na(outcome))
 
@@ -63,7 +134,7 @@ table(pigmt_data$study, !is.na(pigmt_data$pig_neut))
 ##   AQ            77   483
 ##   AQUAMAT     1214  4211
 ##   Lyke et al     6   166
-##   SEAQUAMAT    127  1330
+##   SEAQUAMAT    128  1333
 ##   SMAC          96 25845
 ```
 
@@ -85,7 +156,7 @@ table(pigmt_data$study, !is.na(pigmt_data$pig_mono))
 ##   AQ           259   301
 ##   AQUAMAT     1239  4186
 ##   Lyke et al     6   166
-##   SEAQUAMAT    128  1329
+##   SEAQUAMAT    129  1332
 ##   SMAC         916 25025
 ```
 
@@ -107,7 +178,7 @@ table(pigmt_data$study, !is.na(pigmt_data$parasitaemia))
 ##   AQ             0   560
 ##   AQUAMAT      639  4786
 ##   Lyke et al     0   172
-##   SEAQUAMAT      0  1457
+##   SEAQUAMAT      0  1461
 ##   SMAC          31 25910
 ```
 
@@ -151,8 +222,8 @@ summary(mod_death_SQ)$coefficients
 
 ```
 ##                                Estimate Std. Error    z value     Pr(>|z|)
-## (Intercept)                  -1.9303339  0.3194424 -6.0428236 1.514402e-09
-## as.numeric(!is.na(pig_neut))  0.2402474  0.2658051  0.9038479 3.660761e-01
+## (Intercept)                  -1.9418980  0.3183736 -6.0994322 1.064459e-09
+## as.numeric(!is.na(pig_neut))  0.2560062  0.2653230  0.9648849 3.346025e-01
 ```
 
 ```r
@@ -181,11 +252,11 @@ summary(mod_para_SQ)$coefficients
 
 ```
 ##                                     Estimate Std. Error   z value     Pr(>|z|)
-## (Intercept)                        0.6842788 0.36695264  1.864761 6.221497e-02
-## log10(parasitaemia + lambda_para)  0.3587043 0.07870764  4.557427 5.178405e-06
-## country_fIndia                     0.5379355 0.40011736  1.344444 1.788047e-01
-## country_fIndonesia                -0.7671878 0.22333426 -3.435155 5.922151e-04
-## country_fMyanmar                   1.1043684 0.27268902  4.049919 5.123539e-05
+## (Intercept)                        0.6297328 0.36391621  1.730433 8.355287e-02
+## log10(parasitaemia + lambda_para)  0.3717608 0.07815339  4.756809 1.966770e-06
+## country_fIndia                     0.5375038 0.40031095  1.342716 1.793640e-01
+## country_fIndonesia                -0.7583936 0.22341400 -3.394566 6.873742e-04
+## country_fMyanmar                   1.0715903 0.26961268  3.974555 7.051107e-05
 ```
 
 ```r
@@ -199,8 +270,8 @@ summary(mod_para)$coefficients
 
 ```
 ##                                     Estimate Std. Error   z value     Pr(>|z|)
-## (Intercept)                       -0.5563924 0.36458614 -1.526093 1.269867e-01
-## log10(parasitaemia + lambda_para)  0.7003164 0.03901309 17.950807 4.729772e-72
+## (Intercept)                       -0.5697068 0.36384541 -1.565794 1.173969e-01
+## log10(parasitaemia + lambda_para)  0.7025905 0.03897889 18.024900 1.242372e-72
 ```
 
 ```r
@@ -251,8 +322,8 @@ table(high_para=pigmt_data$parasitaemia[aq_ind|sq_ind] > 10000,
 ```
 ##          available
 ## high_para FALSE TRUE
-##     FALSE   410 1010
-##     TRUE    540 4283
+##     FALSE   411 1010
+##     TRUE    540 4286
 ```
 
 ## Overall summaries of data
@@ -280,7 +351,7 @@ print(xx)
 ## 11         Lyke et al: Mali     8.7
 ## 12    SEAQUAMAT: Bangladesh    28.0
 ## 13         SEAQUAMAT: India    23.9
-## 14     SEAQUAMAT: Indonesia     9.1
+## 14     SEAQUAMAT: Indonesia     9.3
 ## 15       SEAQUAMAT: Myanmar    14.4
 ## 16  SMAC: Gabon (Lambarene)     1.4
 ## 17 SMAC: Gabon (Libreville)     5.1
@@ -331,7 +402,7 @@ print(xx)
 ## 1         AQ          483
 ## 2    AQUAMAT         4211
 ## 3 Lyke et al          166
-## 4  SEAQUAMAT         1330
+## 4  SEAQUAMAT         1333
 ## 5       SMAC        25845
 ```
 
@@ -345,7 +416,7 @@ print(xx)
 ## 1         AQ          301
 ## 2    AQUAMAT         4186
 ## 3 Lyke et al          166
-## 4  SEAQUAMAT         1329
+## 4  SEAQUAMAT         1332
 ## 5       SMAC        25025
 ```
 
@@ -359,7 +430,7 @@ print(xx)
 ## 1         AQ          560
 ## 2    AQUAMAT         4786
 ## 3 Lyke et al          172
-## 4  SEAQUAMAT         1457
+## 4  SEAQUAMAT         1461
 ## 5       SMAC        25910
 ```
 
@@ -384,7 +455,7 @@ print(xx)
 ## 11         Lyke et al: Mali     9.0
 ## 12    SEAQUAMAT: Bangladesh    27.8
 ## 13         SEAQUAMAT: India    23.9
-## 14     SEAQUAMAT: Indonesia     9.9
+## 14     SEAQUAMAT: Indonesia    10.2
 ## 15       SEAQUAMAT: Myanmar    14.8
 ## 16  SMAC: Gabon (Lambarene)     1.4
 ## 17 SMAC: Gabon (Libreville)     5.1
@@ -399,7 +470,7 @@ writeLines(sprintf('We have data on pigmented neutrophil counts in %s patients',
 ```
 
 ```
-## We have data on pigmented neutrophil counts in 32035 patients
+## We have data on pigmented neutrophil counts in 32038 patients
 ```
 
 ```r
@@ -407,7 +478,7 @@ writeLines(sprintf('We have data on pigmented monocyte counts in %s patients', s
 ```
 
 ```
-## We have data on pigmented monocyte counts in 31007 patients
+## We have data on pigmented monocyte counts in 31010 patients
 ```
 
 ```r
@@ -487,6 +558,7 @@ aggregate(pig_mono ~ meta_code, data = pigmt_data, FUN = median)
 
 
 Some data plots
+
 ![](Pigment_Prognostic_Value_files/figure-html/data_exploratory_plots-1.png)<!-- -->![](Pigment_Prognostic_Value_files/figure-html/data_exploratory_plots-2.png)<!-- -->
 
 
@@ -512,7 +584,7 @@ We use generalised additive models as the effects may be non-linear
 ```
 
 ```
-## [1] 0.000000e+00 3.817736e-06
+## [1] 0.000000e+00 4.172026e-06
 ```
 
 ```
@@ -520,8 +592,9 @@ We use generalised additive models as the effects may be non-linear
 ```
 
 ```
-## [1] 1.136217e-06 0.000000e+00
+## [1] 1.100682e-06 0.000000e+00
 ```
+
 
 
 
@@ -557,7 +630,46 @@ We use generalised additive models as the effects may be non-linear
 
 ![](Pigment_Prognostic_Value_files/figure-html/MORU_results-1.png)<!-- -->
 
-## In cerebral malaria
+### 5% prognostic value
+
+
+```r
+## Neutrophils
+mod_5percentMORU_PMN = 
+  glmer(outcome ~ (prop_pigneut>0.05) + (1|country_f:study),
+        family='binomial', data = pigmt_data[pigmt_data$study %in% c('AQ','AQUAMAT','SEAQUAMAT'), ])
+
+xx=summary(mod_5percentMORU_PMN)
+writeLines(sprintf('In the MORU data (n=%s), the odds ratio for death in those with >5%% pigment containing PMNs is %s (95%% CI %s to %s)',
+                   length(xx$residuals),
+                   round(exp(xx$coefficients[2,1]),2),
+                   round(exp(xx$coefficients[2,1]-1.96*xx$coefficients[2,2]),2),
+                   round(exp(xx$coefficients[2,1]+1.96*xx$coefficients[2,2]),2)))
+```
+
+```
+## In the MORU data (n=6027), the odds ratio for death in those with >5% pigment containing PMNs is 2.39 (95% CI 2.02 to 2.81)
+```
+
+```r
+## Monocytes
+mod_5percentMORU_PMM = 
+  glmer(outcome ~ (prop_pigmono>0.05) + (1|country_f:study),
+        family='binomial', data = pigmt_data[pigmt_data$study %in% c('AQ','AQUAMAT','SEAQUAMAT'), ])
+
+xx=summary(mod_5percentMORU_PMM)
+writeLines(sprintf('In the MORU data (n=%s), the odds ratio for death in those with >5%% pigment containing PMMs is %s (95%% CI %s to %s)',
+                   length(xx$residuals),
+                   round(exp(xx$coefficients[2,1]),2),
+                   round(exp(xx$coefficients[2,1]-1.96*xx$coefficients[2,2]),2),
+                   round(exp(xx$coefficients[2,1]+1.96*xx$coefficients[2,2]),2)))
+```
+
+```
+## In the MORU data (n=5819), the odds ratio for death in those with >5% pigment containing PMMs is 1.31 (95% CI 1.1 to 1.55)
+```
+
+### In cerebral malaria
 
 
 ```r
@@ -614,20 +726,20 @@ summary(mod_PCT_SQ)
 ##     bs = "re")
 ## 
 ## Parametric coefficients:
-##             Estimate Std. Error z value Pr(>|z|)    
-## (Intercept)  -0.9298     0.2806  -3.313 0.000922 ***
+##             Estimate Std. Error z value Pr(>|z|)   
+## (Intercept)  -0.9338     0.2839  -3.289    0.001 **
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
 ##                                        edf Ref.df Chi.sq  p-value    
-## s(log10(parasitaemia + lambda_para)) 2.556  2.853  27.98 1.87e-05 ***
-## s(country_f)                         2.573  3.000  22.74 7.77e-06 ***
+## s(log10(parasitaemia + lambda_para)) 2.564  2.857  27.98 1.87e-05 ***
+## s(country_f)                         2.582  3.000  23.14 6.70e-06 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0834   Deviance explained = 7.37%
-## UBRE = 0.18538  Scale est. = 1         n = 628
+## R-sq.(adj) =  0.084   Deviance explained = 7.42%
+## UBRE = 0.18405  Scale est. = 1         n = 629
 ```
 
 ```r
@@ -684,19 +796,19 @@ summary(mod_PN_SQ)
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error z value Pr(>|z|)    
-## (Intercept)  -0.8420     0.1756  -4.795 1.63e-06 ***
+## (Intercept)  -0.8471     0.1779  -4.761 1.93e-06 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
-##                                           edf Ref.df Chi.sq  p-value    
-## s(log10(prop_pigneut + lambda_pigment)) 1.000      1  30.02  < 2e-16 ***
-## s(country_f)                            1.872      3  10.62 0.000965 ***
+##                                         edf Ref.df Chi.sq  p-value    
+## s(log10(prop_pigneut + lambda_pigment)) 1.0      1  29.83  < 2e-16 ***
+## s(country_f)                            1.9      3  10.83 0.000914 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.078   Deviance explained = 7.04%
-## UBRE = 0.18295  Scale est. = 1         n = 579
+## R-sq.(adj) =  0.0782   Deviance explained = 7.07%
+## UBRE = 0.18196  Scale est. = 1         n = 580
 ```
 
 ```r
@@ -752,19 +864,19 @@ summary(mod_PM_SQ)
 ## 
 ## Parametric coefficients:
 ##             Estimate Std. Error z value Pr(>|z|)    
-## (Intercept)  -0.8637     0.2423  -3.565 0.000364 ***
+## (Intercept)  -0.8682     0.2458  -3.533 0.000411 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
 ## Approximate significance of smooth terms:
 ##                                           edf Ref.df Chi.sq  p-value    
-## s(log10(prop_pigmono + lambda_pigment)) 1.485  1.768  8.889   0.0235 *  
-## s(country_f)                            2.407  3.000 17.990 5.93e-05 ***
+## s(log10(prop_pigmono + lambda_pigment)) 1.483  1.765  8.929   0.0231 *  
+## s(country_f)                            2.423  3.000 18.264 5.37e-05 ***
 ## ---
 ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ## 
-## R-sq.(adj) =  0.0417   Deviance explained = 4.11%
-## UBRE = 0.22332  Scale est. = 1         n = 579
+## R-sq.(adj) =  0.0422   Deviance explained = 4.17%
+## UBRE = 0.22185  Scale est. = 1         n = 580
 ```
 
 
@@ -790,7 +902,7 @@ my_preds=predict(mod_PCT_AQ,
 ```r
 plot(xs,100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
-     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+     xlab='Parasite count (per uL)',type='l',lwd=3)
 axis(1, at = 1:6, labels = c(10,
                              expression(10^2),
                              expression(10^3),
@@ -821,7 +933,7 @@ my_preds=predict(mod_PCT_SQ,
 ```r
 plot(xs, 100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
-     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+     xlab='Parasite count (per uL)',type='l',lwd=3)
 axis(1, at = 1:6, labels = c(10,
                              expression(10^2),
                              expression(10^3),
@@ -856,7 +968,7 @@ my_preds=predict(mod_PN_AQ,
 plot(log10(xs+lambda_pigment),
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
-     xlab='Admission pigment containing PMNs (%)',type='l',lwd=3)
+     xlab='Pigment containing PMNs (%)',type='l',lwd=3)
 axis(1, at = log10(c(0,1,2,5,10)/100+lambda_pigment), 
      labels = c(0,1,2,5,10))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -886,7 +998,7 @@ my_preds=predict(mod_PN_SQ,
 plot(log10(xs+lambda_pigment), 
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
-     xlab='Admission pigment containing PMNs (%)',
+     xlab='Pigment containing PMNs (%)',
      type='l',lwd=3)
 axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
      labels = c(0,1,2,5,10,20))
@@ -920,7 +1032,7 @@ my_preds=predict(mod_PM_AQ,
 plot(log10(xs+lambda_pigment),
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
-     xlab = 'Admission pigment containing PMMs (%)',
+     xlab = 'Pigment containing PMMs (%)',
      type='l',lwd=3)
 axis(1, at = log10(c(0,1,5,10,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,10,20,40))
@@ -951,7 +1063,7 @@ my_preds=predict(mod_PM_SQ,
 plot(log10(xs+lambda_pigment), 
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
-     xlab='Admission pigment containing PMMs (%)',type='l',lwd=3)
+     xlab='Pigment containing PMMs (%)',type='l',lwd=3)
 axis(1, at = log10(c(0,1,2,5,10,15)/100+lambda_pigment), 
      labels = c(0,1,2,5,10,15))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -978,7 +1090,7 @@ writeLines(sprintf('We have PMN data on a total of %s patients from the 3 MORU t
 ```
 
 ```
-## We have PMN data on a total of 6024 patients from the 3 MORU trials
+## We have PMN data on a total of 6027 patients from the 3 MORU trials
 ```
 
 Mixed effects for site, country and study
@@ -994,11 +1106,11 @@ summary(mod_all)$coefficients
 
 ```
 ##                                        Estimate Std. Error   z value
-## (Intercept)                          -0.7208945  0.1758946 -4.098446
-## log10(prop_pigneut + lambda_pigment)  0.9263479  0.0875968 10.575134
+## (Intercept)                          -0.7189118 0.17582412 -4.088812
+## log10(prop_pigneut + lambda_pigment)  0.9267863 0.08753163 10.588016
 ##                                          Pr(>|z|)
-## (Intercept)                          4.159327e-05
-## log10(prop_pigneut + lambda_pigment) 3.886203e-26
+## (Intercept)                          4.335884e-05
+## log10(prop_pigneut + lambda_pigment) 3.386948e-26
 ```
 
 ```r
@@ -1035,7 +1147,7 @@ exp(summary(mod_all_pos)$coefficients)[2,1]
 ```
 
 ```
-## [1] 2.695051
+## [1] 2.689449
 ```
 
 ```r
@@ -1055,8 +1167,8 @@ summary(mod_all)$coefficients
 
 ```
 ##                                   Estimate Std. Error   z value     Pr(>|z|)
-## (Intercept)                     -2.3921282 0.13500708 -17.71854 3.016455e-70
-## as.numeric(prop_pigneut > 0.05)  0.8764323 0.08447062  10.37559 3.202360e-25
+## (Intercept)                     -2.3897853 0.13501306 -17.70040 4.163329e-70
+## as.numeric(prop_pigneut > 0.05)  0.8750535 0.08444453  10.36246 3.673714e-25
 ```
 
 ```r
@@ -1064,7 +1176,7 @@ round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coe
 ```
 
 ```
-## [1] 2.04 2.40 2.83
+## [1] 2.03 2.40 2.83
 ```
 
 
@@ -1077,7 +1189,7 @@ writeLines(sprintf('We have PMN data on a total of %s patients from the 3 MORU t
 ```
 
 ```
-## We have PMN data on a total of 5816 patients from the 3 MORU trials
+## We have PMN data on a total of 5819 patients from the 3 MORU trials
 ```
 
 Mixed effects for site, country and study
@@ -1093,11 +1205,11 @@ summary(mod_all)$coefficients
 
 ```
 ##                                        Estimate Std. Error   z value
-## (Intercept)                          -1.6221136 0.17485876 -9.276708
-## log10(prop_pigmono + lambda_pigment)  0.3289536 0.06867258  4.790174
+## (Intercept)                          -1.6179278 0.17487642 -9.251835
+## log10(prop_pigmono + lambda_pigment)  0.3309347 0.06866728  4.819394
 ##                                          Pr(>|z|)
-## (Intercept)                          1.747960e-20
-## log10(prop_pigmono + lambda_pigment) 1.666371e-06
+## (Intercept)                          2.206715e-20
+## log10(prop_pigmono + lambda_pigment) 1.439947e-06
 ```
 
 ```r
@@ -1113,7 +1225,7 @@ round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coe
 ```
 
 ```
-## [1] 1.21 1.39 1.59
+## [1] 1.22 1.39 1.59
 ```
 
 ```r
@@ -1134,7 +1246,7 @@ exp(summary(mod_all_pos)$coefficients)[2,1]
 ```
 
 ```
-## [1] 1.634524
+## [1] 1.630057
 ```
 
 ```r
@@ -1154,8 +1266,8 @@ summary(mod_all)$coefficients
 
 ```
 ##                                   Estimate Std. Error    z value     Pr(>|z|)
-## (Intercept)                     -2.2116153 0.15318367 -14.437670 2.998057e-47
-## as.numeric(prop_pigmono > 0.05)  0.2724923 0.08781781   3.102928 1.916164e-03
+## (Intercept)                     -2.2094892  0.1531057 -14.431138 3.295954e-47
+## as.numeric(prop_pigmono > 0.05)  0.2715869  0.0877934   3.093478 1.978254e-03
 ```
 
 ```r
@@ -1163,7 +1275,7 @@ round(exp(summary(mod_all)$coefficients[2,1]+c(-1,0,1)*1.96*summary(mod_all)$coe
 ```
 
 ```
-## [1] 1.11 1.31 1.56
+## [1] 1.10 1.31 1.56
 ```
 
 # Meta-analysis
@@ -1236,15 +1348,16 @@ summary(mod_PM)$s.pv
 
 
 ```r
-par(las=1, bty='n', cex.lab=1.3, cex.axis=1.3, family='serif')
-layout(mat = matrix(c(1,2,2,3,4,4,5,6,6),nrow = 3,byrow = F))
+par(las=1, bty='n', cex.lab=1.5, cex.axis=1.5, family='serif')
+layout(mat = matrix(c(1,2,2,2,3,4,4,4,5,6,6,6),nrow = 4,byrow = F))
 
 ####********* Parasite counts *********#######
 xs = seq(log10(lambda_para),6.5,length.out = 100)
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$parasitaemia[Af_ind]+50),
      main ='', xlab='',xaxt='n',xlim = range(xs)+c(-.1,.1),
-     breaks = 30, ylab ='n')
+     breaks = 30, ylab ='', yaxt='n')
+axis(2,at = c(0,1000,2000,3000))
 mtext(text = paste0('n=',sum(notna_para&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
 par(mar = c(5,6,0,4))
@@ -1269,7 +1382,7 @@ my_preds=predict(mod_PCT,
 ```r
 plot(xs, 100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
-     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+     xlab='Parasite count (per uL)',type='l',lwd=3)
 axis(1, at = 2:6, labels = c(expression(10^2),
                              expression(10^3),
                              expression(10^4),
@@ -1286,7 +1399,7 @@ xs = (0: round(100*quantile(pigmt_data$prop_pigneut,
                             probs = .99, na.rm = T)))/100
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigneut[Af_ind]+lambda_pigment),
-     main ='', xlab='', xaxt='n',ylab ='n',
+     main ='', xlab='', xaxt='n',ylab ='',
      xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20)
 mtext(text = paste0('n=',sum(notna_neut&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
@@ -1313,10 +1426,11 @@ my_preds=predict(mod_PN,
 
 ```r
 plot(log10(xs+lambda_pigment), 
-     100*inv.logit(my_preds$fit), panel.first = grid(),
+     100*inv.logit(my_preds$fit), panel.first = grid(NA,NULL),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
-     xlab='Admission pigment containing PMNs (%)',
+     xlab='Pigment containing PMNs (%)',
      type='l',lwd=3)
+abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
      labels = c(0,1,2,5,10,20))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -1332,10 +1446,11 @@ xs = (0: round(100*quantile(pigmt_data$prop_pigmono,
 
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigmono[Af_ind]+lambda_pigment),
-     main ='', xlab='', xaxt='n',ylab ='n',
+     main ='', xlab='', xaxt='n',ylab ='',yaxt='n',
      xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20)
 mtext(text = paste0('n=',sum(notna_mono&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
+axis(2, at=c(0,3000,6000,9000))
 par(mar = c(5,6,0,4))
 
 my_preds=predict(mod_PM,
@@ -1359,9 +1474,10 @@ my_preds=predict(mod_PM,
 
 ```r
 plot(log10(xs+lambda_pigment), 
-     100*inv.logit(my_preds$fit), panel.first = grid(),
+     100*inv.logit(my_preds$fit), panel.first = grid(NA,NULL),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
-     xlab='Admission pigment containing PMMs (%)',type='l',lwd=3)
+     xlab='Pigment containing PMMs (%)',type='l',lwd=3)
+abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,20,40))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -1376,6 +1492,7 @@ polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
 ## Prognostic value of pigmented neutrophils alone: meta-analysis
 
 Remove patients with no pigment data
+
 
 ```r
 pigmt_data = filter(pigmt_data, 
@@ -1436,7 +1553,7 @@ table(pigmt_data$pig_neut100_bins)
 ```
 ## 
 ##  [-1,0]   (0,1]   (1,2]   (2,5] (5,100] 
-##   18847    2610    3761    3272    3545
+##   18847    2610    3761    3275    3545
 ```
 
 ```r
@@ -1463,7 +1580,7 @@ table(pigmt_data$pig_mono30_bins)
 ```
 ## 
 ##  [-1,0]   (0,1]   (1,2]   (2,5] (5,100] 
-##   12644    1752    3707    4665    8239
+##   12645    1752    3707    4667    8239
 ```
 
 ```r
@@ -1478,11 +1595,11 @@ plot(c(0,xxs[,1]), 0:nrow(xxs), pch=16, xlim = c(-0.25, 1.2),
      ylab='', yaxt='n',panel.first = grid(),
      xlab='Odds-ratio for death', xaxt='n')
 abline(v=0, lty=2, lwd=2)
-mtext(text = 'A: pigment containing PMNs',side = 3,adj = 0,cex = 1.3, 
+mtext(text = 'a: pigment containing PMNs',side = 3,adj = 0,cex = 1.3, 
       line = 1.5)
 axis(1, at = log(c(1,2,3)), labels = 1:3)
 axis(2, at = 0:nrow(xxs), 
-     labels = c('0%: ref','(0-1]','(1-2]','(2-5]','>5'),tick = F)
+     labels = c('0%\n(reference)','(0-1]%','(1-2]%','(2-5]%','>5%'),tick = F)
 # axis(2, at = 3, labels = expression(''>="5%"))
 axis(4, at = 0:nrow(xxs),tick = F,
      labels = paste('n',table(pigmt_data$pig_neut100_bins),
@@ -1498,12 +1615,11 @@ plot(c(0,xxs2[,1]), 0:nrow(xxs2), pch=16, xlim = c(-0.25, 1.2),
      ylab='', yaxt='n',panel.first = grid(),
      xlab='Odds-ratio for death', xaxt='n')
 abline(v=0, lty=2, lwd=2)
-mtext(text = 'B: pigment containing PMMs',side = 3,adj = 0, cex = 1.3, 
+mtext(text = 'b: pigment containing PMMs',side = 3,adj = 0, cex = 1.3, 
       line = 1.5)
 axis(1, at = log(c(1,2,3)), labels = 1:3)
 axis(2, at = 0:nrow(xxs2), 
-     labels = c('0%: ref','(0-1]','(1-2]','(2-5]','>5'),tick = F)
-# axis(2, at = 3, labels = expression(''>="5%"))
+     labels = c('0%\n(reference)','(0-1]%','(1-2]%','(2-5]%','>5%'),tick = F)
 axis(4, at = 0:nrow(xxs2),tick = F,
      labels = paste('n',table(pigmt_data$pig_mono30_bins),
                     sep='='))
@@ -1542,21 +1658,221 @@ mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
             n.c = n_c, studlab = lab,
             sm = 'OR',
             comb.random = T)
-```
-
-```
-## Warning: Use argument 'random' instead of 'comb.random' (deprecated).
-```
-
-```r
 par(family='serif')
 forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
-       rightcols=c("effect", "ci", "w.random"),
+       rightcols=F,
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
 
 ![](Pigment_Prognostic_Value_files/figure-html/pigmented_neutrophils_5percent-1.png)<!-- -->
+
+
+
+Just looking at SMAC - what were they thinking???
+
+
+```r
+ind_not_na = !is.na(pigmt_data$prop_pigneut) & !is.na(pigmt_data$outcome) & pigmt_data$study=='SMAC'
+ind_pos = pigmt_data$prop_pigneut > 0.05
+event_e = c()
+n_e = c()
+event_c = c()
+n_c = c()
+lab = c()
+for(ss in unique(pigmt_data$meta_code[pigmt_data$study=='SMAC'])){
+  ind = pigmt_data$meta_code==ss
+  my_study = ss
+  event_e = c(event_e, 
+              sum(pigmt_data$outcome[ind_not_na&ind&ind_pos]))
+  n_e = c(n_e, sum(ind_not_na&ind&ind_pos))
+  event_c = c(event_c, sum(pigmt_data$outcome[ind_not_na&ind& !ind_pos]))
+  n_c = c(n_c, sum(ind_not_na&ind& !ind_pos))
+  lab = c(lab, ss)           
+}
+
+mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
+            n.c = n_c, studlab = lab,
+            sm = 'OR',
+            comb.random = T)
+par(family='serif')
+forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
+       rightcols=F,
+       test.overall.random=T,
+       digits.pval=1, scientific.pval=T)
+```
+
+![](Pigment_Prognostic_Value_files/figure-html/smac_only-1.png)<!-- -->
+
+Any difference between children and adults?
+
+
+```r
+table(pigmt_data$study, pigmt_data$age>15)
+```
+
+```
+##             
+##              FALSE  TRUE
+##   AQ             8   475
+##   AQUAMAT     4195     0
+##   Lyke et al   166     0
+##   SEAQUAMAT    206  1127
+##   SMAC       25808     0
+```
+
+```r
+pigmt_data$Africa = as.numeric(Af_ind)
+summary(glmer(outcome ~ as.numeric(pig_neut > 5) + (1|site:study),
+              family = 'binomial', data = pigmt_data))
+```
+
+```
+## Generalized linear mixed model fit by maximum likelihood (Laplace
+##   Approximation) [glmerMod]
+##  Family: binomial  ( logit )
+## Formula: outcome ~ as.numeric(pig_neut > 5) + (1 | site:study)
+##    Data: pigmt_data
+## 
+##      AIC      BIC   logLik deviance df.resid 
+##  13229.6  13254.7  -6611.8  13223.6    32035 
+## 
+## Scaled residuals: 
+##     Min      1Q  Median      3Q     Max 
+## -0.7625 -0.2967 -0.1977 -0.1607  8.9438 
+## 
+## Random effects:
+##  Groups     Name        Variance Std.Dev.
+##  site:study (Intercept) 0.5182   0.7199  
+## Number of obs: 32038, groups:  site:study, 29
+## 
+## Fixed effects:
+##                          Estimate Std. Error z value Pr(>|z|)    
+## (Intercept)              -2.60702    0.14177  -18.39   <2e-16 ***
+## as.numeric(pig_neut > 5)  0.81189    0.05534   14.67   <2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Correlation of Fixed Effects:
+##             (Intr)
+## as.nmr(_>5) -0.148
+```
+
+```r
+summary(glmer(outcome ~ as.numeric(pig_neut >5) * (age<15) + (1|site:study),
+              family = 'binomial', data = pigmt_data))
+```
+
+```
+## Generalized linear mixed model fit by maximum likelihood (Laplace
+##   Approximation) [glmerMod]
+##  Family: binomial  ( logit )
+## Formula: outcome ~ as.numeric(pig_neut > 5) * (age < 15) + (1 | site:study)
+##    Data: pigmt_data
+## 
+##      AIC      BIC   logLik deviance df.resid 
+##  13183.4  13225.3  -6586.7  13173.4    31972 
+## 
+## Scaled residuals: 
+##     Min      1Q  Median      3Q     Max 
+## -0.8534 -0.2887 -0.2004 -0.1615  8.6653 
+## 
+## Random effects:
+##  Groups     Name        Variance Std.Dev.
+##  site:study (Intercept) 0.3478   0.5897  
+## Number of obs: 31977, groups:  site:study, 29
+## 
+## Fixed effects:
+##                                       Estimate Std. Error z value Pr(>|z|)    
+## (Intercept)                            -2.1657     0.1903 -11.378  < 2e-16 ***
+## as.numeric(pig_neut > 5)                1.1947     0.1359   8.788  < 2e-16 ***
+## age < 15TRUE                           -0.7016     0.2092  -3.354 0.000797 ***
+## as.numeric(pig_neut > 5):age < 15TRUE  -0.4644     0.1490  -3.117 0.001825 ** 
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Correlation of Fixed Effects:
+##             (Intr) a.(_>5 a<15TR
+## as.nmr(_>5) -0.360              
+## age<15TRUE  -0.773  0.325       
+## a.(_>5):<15  0.332 -0.911 -0.340
+```
+
+```r
+summary(glmer(outcome ~ as.numeric(pig_neut >5) * Africa + (1|site),
+              family = 'binomial', data = pigmt_data))
+```
+
+```
+## Generalized linear mixed model fit by maximum likelihood (Laplace
+##   Approximation) [glmerMod]
+##  Family: binomial  ( logit )
+## Formula: outcome ~ as.numeric(pig_neut > 5) * Africa + (1 | site)
+##    Data: pigmt_data
+## 
+##      AIC      BIC   logLik deviance df.resid 
+##  13214.3  13256.1  -6602.1  13204.3    32033 
+## 
+## Scaled residuals: 
+##     Min      1Q  Median      3Q     Max 
+## -0.8310 -0.2887 -0.2002 -0.1612  8.6667 
+## 
+## Random effects:
+##  Groups Name        Variance Std.Dev.
+##  site   (Intercept) 0.3325   0.5766  
+## Number of obs: 32038, groups:  site, 29
+## 
+## Fixed effects:
+##                                 Estimate Std. Error z value Pr(>|z|)    
+## (Intercept)                      -2.1990     0.2103 -10.456  < 2e-16 ***
+## as.numeric(pig_neut > 5)          1.1580     0.1326   8.730  < 2e-16 ***
+## Africa                           -0.6946     0.2571  -2.702  0.00689 ** 
+## as.numeric(pig_neut > 5):Africa  -0.4253     0.1463  -2.907  0.00365 ** 
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Correlation of Fixed Effects:
+##             (Intr) as.(_>5) Africa
+## as.nmr(_>5) -0.337                
+## Africa      -0.824  0.277         
+## as.n(_>5):A  0.306 -0.906   -0.285
+```
+
+```r
+summary(glmer(outcome ~ as.numeric(pig_neut >5) + (1|site),
+              family = 'binomial', data = pigmt_data[pigmt_data$age<15,]))
+```
+
+```
+## Generalized linear mixed model fit by maximum likelihood (Laplace
+##   Approximation) [glmerMod]
+##  Family: binomial  ( logit )
+## Formula: outcome ~ as.numeric(pig_neut > 5) + (1 | site)
+##    Data: pigmt_data[pigmt_data$age < 15, ]
+## 
+##      AIC      BIC   logLik deviance df.resid 
+##  11726.4  11751.3  -5860.2  11720.4    30330 
+## 
+## Scaled residuals: 
+##     Min      1Q  Median      3Q     Max 
+## -0.5178 -0.2565 -0.2003 -0.1614  8.7006 
+## 
+## Random effects:
+##  Groups Name        Variance Std.Dev.
+##  site   (Intercept) 0.3731   0.6108  
+## Number of obs: 30333, groups:  site, 26
+## 
+## Fixed effects:
+##                          Estimate Std. Error z value Pr(>|z|)    
+## (Intercept)              -2.85562    0.14303  -19.96   <2e-16 ***
+## as.numeric(pig_neut > 5)  0.73323    0.06149   11.93   <2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Correlation of Fixed Effects:
+##             (Intr)
+## as.nmr(_>5) -0.144
+```
 
 
 
@@ -1588,16 +1904,9 @@ mod=metabin(event.e = event_e,
             n.c = n_c, studlab = lab, 
             sm = 'OR',
             comb.random = T)
-```
-
-```
-## Warning: Use argument 'random' instead of 'comb.random' (deprecated).
-```
-
-```r
 par(family='serif')
 forest(mod, lab.e = '>5% pPMM', lab.c = '<5% pPMM',
-       rightcols=c("effect", "ci", "w.random"),
+       rightcols=F,
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
@@ -1616,8 +1925,8 @@ summary(mod_all)$coefficients
 
 ```
 ##                           Estimate Std. Error    z value     Pr(>|z|)
-## (Intercept)              -2.522714  0.1516447 -16.635688 3.843184e-62
-## as.numeric(prop_pigmono)  2.029748  0.2471586   8.212333 2.169318e-16
+## (Intercept)              -2.521557  0.1523346 -16.552750 1.529524e-61
+## as.numeric(prop_pigmono)  2.030378  0.2501151   8.117774 4.748122e-16
 ```
 
 ```r
@@ -1629,11 +1938,11 @@ summary(mod_all)$coefficients
 
 ```
 ##                                        Estimate Std. Error    z value
-## (Intercept)                          -1.9230851 0.16121630 -11.928602
-## log10(prop_pigmono + lambda_pigment)  0.2929874 0.04417583   6.632301
+## (Intercept)                          -1.9207005 0.16216315 -11.844248
+## log10(prop_pigmono + lambda_pigment)  0.2938478 0.04420657   6.647152
 ##                                          Pr(>|z|)
-## (Intercept)                          8.397153e-33
-## log10(prop_pigmono + lambda_pigment) 3.304930e-11
+## (Intercept)                          2.304767e-32
+## log10(prop_pigmono + lambda_pigment) 2.988183e-11
 ```
 
 # Prognostic value of pigmented monocytes in addition to severity data
@@ -1660,7 +1969,7 @@ table(pigmt_data$study,is.na(pigmt_data$coma))
 ##   AQ           483     0
 ##   AQUAMAT     4217     0
 ##   Lyke et al   166     0
-##   SEAQUAMAT   1330     0
+##   SEAQUAMAT   1333     0
 ##   SMAC       25834    13
 ```
 
@@ -1682,7 +1991,7 @@ table(pigmt_data$study,is.na(pigmt_data$acidosis))
 ##   AQ             0   483
 ##   AQUAMAT     4217     0
 ##   Lyke et al     0   166
-##   SEAQUAMAT   1195   135
+##   SEAQUAMAT   1198   135
 ##   SMAC       25847     0
 ```
 
@@ -1704,7 +2013,7 @@ table(pigmt_data$study,is.na(pigmt_data$resp_rate))
 ##   AQ           482     1
 ##   AQUAMAT     4192    25
 ##   Lyke et al     0   166
-##   SEAQUAMAT   1327     3
+##   SEAQUAMAT   1330     3
 ##   SMAC       25754    93
 ```
 
@@ -1727,7 +2036,7 @@ table(pigmt_data$study,is.na(pigmt_data$lactate))
 ##   AQ           479     4
 ##   AQUAMAT        0  4217
 ##   Lyke et al     0   166
-##   SEAQUAMAT      0  1330
+##   SEAQUAMAT      0  1333
 ##   SMAC       24414  1433
 ```
 
@@ -1749,7 +2058,7 @@ table(pigmt_data$study,is.na(pigmt_data$hypoglycaemia))
 ##   AQ           483     0
 ##   AQUAMAT     4217     0
 ##   Lyke et al     0   166
-##   SEAQUAMAT   1270    60
+##   SEAQUAMAT   1273    60
 ##   SMAC       25847     0
 ```
 
@@ -1771,7 +2080,7 @@ table(pigmt_data$study,is.na(pigmt_data$bun))
 ##   AQ           228   255
 ##   AQUAMAT     3650   567
 ##   Lyke et al     0   166
-##   SEAQUAMAT   1249    81
+##   SEAQUAMAT   1252    81
 ##   SMAC           0 25847
 ```
 
@@ -1909,7 +2218,7 @@ summary(mod_SQ_neut_alone)$coefficients[2,]
 
 ```
 ##     Estimate   Std. Error      z value     Pr(>|z|) 
-## 1.017803e+00 1.487289e-01 6.843341e+00 7.736725e-12
+## 1.013016e+00 1.484940e-01 6.821930e+00 8.982527e-12
 ```
 
 ```r
@@ -1924,7 +2233,7 @@ summary(mod_SQ_neut_clinical)$coefficients[2,]
 
 ```
 ##     Estimate   Std. Error      z value     Pr(>|z|) 
-## 0.6267320592 0.1760790314 3.5593792984 0.0003717323
+## 0.6160359021 0.1756288861 3.5076001205 0.0004521682
 ```
 
 ```r
@@ -1938,8 +2247,8 @@ summary(mod_SQ_neut_lab)$coefficients[2,]
 ```
 
 ```
-##   Estimate Std. Error    z value   Pr(>|z|) 
-## 0.50083258 0.18910326 2.64846089 0.00808592
+##    Estimate  Std. Error     z value    Pr(>|z|) 
+## 0.490899642 0.188861140 2.599262301 0.009342436
 ```
 
 ```r
@@ -1954,8 +2263,8 @@ summary(mod_SQ_mono_alone)$coefficients
 
 ```
 ##               Estimate Std. Error   z value     Pr(>|z|)
-## (Intercept) -1.8530660  0.2030543 -9.125962 7.110173e-20
-## PMMs5        0.5171275  0.1509860  3.425003 6.147926e-04
+## (Intercept) -1.8475029  0.2018076 -9.154772 5.447269e-20
+## PMMs5        0.5142849  0.1508698  3.408799 6.524947e-04
 ```
 
 ```r
@@ -1970,10 +2279,10 @@ summary(mod_SQ_mono_clinical)$coefficients
 
 ```
 ##               Estimate Std. Error    z value     Pr(>|z|)
-## (Intercept) -4.0020914  0.2725217 -14.685407 7.995314e-49
-## PMMs5        0.2760348  0.1827932   1.510093 1.310198e-01
-## coma         1.3513624  0.1872100   7.218429 5.259139e-13
-## acidosis     2.1780403  0.2253032   9.667152 4.157886e-22
+## (Intercept) -3.9898304  0.2710736 -14.718623 4.895236e-49
+## PMMs5        0.2687599  0.1824519   1.473045 1.407388e-01
+## coma         1.3340290  0.1862776   7.161511 7.979272e-13
+## acidosis     2.1896671  0.2250487   9.729748 2.251501e-22
 ```
 
 ```r
@@ -1987,13 +2296,13 @@ summary(mod_SQ_mono_lab)$coefficients
 ```
 
 ```
-##                  Estimate  Std. Error     z value     Pr(>|z|)
-## (Intercept)   -4.63736012 0.310123785 -14.9532553 1.483181e-50
-## PMMs5          0.15416867 0.195835926   0.7872339 4.311450e-01
-## coma           1.35529850 0.203114141   6.6725955 2.513184e-11
-## acidosis       1.56464523 0.241339648   6.4831669 8.981703e-11
-## bun            0.01886625 0.002222645   8.4881965 2.098686e-17
-## hypoglycaemia  1.33664190 0.536281685   2.4924250 1.268741e-02
+##                  Estimate Std. Error     z value     Pr(>|z|)
+## (Intercept)   -4.63517219 0.30931422 -14.9853187 9.158517e-51
+## PMMs5          0.14695375 0.19574283   0.7507491 4.528037e-01
+## coma           1.34161438 0.20246042   6.6265516 3.436195e-11
+## acidosis       1.57293409 0.24105933   6.5250910 6.796027e-11
+## bun            0.01900949 0.00221956   8.5645312 1.085164e-17
+## hypoglycaemia  1.33573690 0.53650777   2.4896879 1.278553e-02
 ```
 
 ### AQUAMAT
@@ -2280,7 +2589,9 @@ coefs_adj2_PM$upperCI = coefs_adj2_PM$Estimate+1.96*coefs_adj2_PM$Std..Error
 coefs_adj2_PM$lowerCI = coefs_adj2_PM$Estimate-1.96*coefs_adj2_PM$Std..Error
 ```
 
-severity at baseline across sites
+
+severity at baseline across studies
+
 
 ```r
 ind_not_na_neut = !is.na(pigmt_data$prop_pigneut)
@@ -2288,9 +2599,9 @@ ind_not_na_mono = !is.na(pigmt_data$prop_pigmono)
 
 my_cols = brewer.pal(n = 12, name = 'Paired')[c(2,10,6,8)]
 par(mar=c(5,10,4,2), las=1, bty='n', mfrow=c(1,2),cex.lab=1.3, cex.axis=1.3)
-epsilon = 0.1
+epsilon = -0.1
 plot(coefs_non_adj[,'Estimate'], (4:1)-epsilon, pch=17, 
-     panel.first = grid(), ylim = c(1-epsilon, 4+epsilon),
+     panel.first = grid(), ylim = c(1+epsilon, 4-epsilon),
      xlim = range(c(coefs_adj$upperCI, 
                     coefs_adj$lowerCI,
                     coefs_non_adj$upperCI,
@@ -2321,13 +2632,12 @@ legend('right',
                   'Adjusted: clinical',
                   'Adjusted: clinical and lab'),
        lwd = 3, col = my_cols, pch = 17:15, cex=1.3)
-mtext(text = 'A: >5% pigment containing PMNs',side = 3,adj = 0, cex = 1.5, line=1.5)
+mtext(text = 'a: >5% pigment containing PMNs',side = 3,adj = 0, cex = 1.5, line=1.5)
 
 
 par(mar=c(5,10,4,2), las=1)
-epsilon = 0.1
 plot(coefs_non_adj_PM[,'Estimate'], (4:1)-epsilon, pch=17, 
-     panel.first = grid(), ylim = c(1-epsilon, 4+epsilon),
+     panel.first = grid(), ylim = c(1+epsilon, 4-epsilon),
      xlim = range(c(coefs_adj_PM$upperCI, 
                     coefs_adj_PM$lowerCI,
                     coefs_non_adj_PM$upperCI,
@@ -2354,7 +2664,7 @@ for(j in 1:4){
   lines(c(coefs_adj2_PM$lowerCI[j], coefs_adj2_PM$upperCI[j]),
         c(i+epsilon, i+epsilon), lwd=2,col=my_cols[3])
 }
-mtext(text = 'B: >5% pigment containing PMMs',side = 3,adj = 0, cex = 1.5, line=1.5)
+mtext(text = 'b: >5% pigment containing PMMs',side = 3,adj = 0, cex = 1.5, line=1.5)
 ```
 
 ![](Pigment_Prognostic_Value_files/figure-html/severity_sites-1.png)<!-- -->
@@ -2386,14 +2696,17 @@ summary(mod)$coefficients
 
 ```
 ##                                     Estimate Std. Error   z value      Pr(>|z|)
-## (Intercept)                       -5.5290716 0.25437960 -21.73551 9.471490e-105
-## log10(parasitaemia + lambda_para)  0.8855407 0.02727584  32.46612 3.208779e-231
+## (Intercept)                       -5.5289872 0.25391632 -21.77484 4.018742e-105
+## log10(parasitaemia + lambda_para)  0.8853594 0.02725899  32.47953 2.074645e-231
 ```
 
 ```r
 xs = 10^(seq(1.5, 6, length.out = 100))
 
-preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+preds=predict(mod, newdata=data.frame(parasitaemia=xs,
+                                      site = -1, country= -1, study= -1,
+                                      lambda_para=lambda_para),
+              type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
      ylab = 'Pigment containing PMNs >5% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
@@ -2426,16 +2739,16 @@ summary(mod)$coefficients
 
 ```
 ##                                     Estimate Std. Error   z value      Pr(>|z|)
-## (Intercept)                       -2.7477773 0.18464497 -14.88141  4.352394e-50
-## log10(parasitaemia + lambda_para)  0.5151348 0.01613973  31.91718 1.542255e-223
+## (Intercept)                       -2.7481587 0.18483609 -14.86808  5.311094e-50
+## log10(parasitaemia + lambda_para)  0.5150772 0.01613894  31.91519 1.643639e-223
 ```
 
 ```r
 xs = 10^(seq(1.5, 6, length.out = 100))
 
-preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+preds=predict(mod, newdata=data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
-     ylab = 'Pigment containing PMNs >5% (probability)',
+     ylab = 'Pigment containing PMMs >5% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
      xaxt='n', panel.first=grid(),lwd=3)
 axis(1, at = 2:6, labels = c(expression(10^2),
@@ -2455,13 +2768,13 @@ summary(mod)$coefficients
 ```
 
 ```
-##                                    Estimate Std. Error   z value     Pr(>|z|)
-## (Intercept)                       -2.371879 0.24176903 -9.810516 1.014487e-22
-## log10(parasitaemia + lambda_para)  0.782833 0.01515953 51.639667 0.000000e+00
+##                                     Estimate Std. Error   z value     Pr(>|z|)
+## (Intercept)                       -2.3718346 0.24154917 -9.819262 9.302231e-23
+## log10(parasitaemia + lambda_para)  0.7830075 0.01515935 51.651772 0.000000e+00
 ```
 
 ```r
-preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+preds=predict(mod, newdata=data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
      ylab = 'Pigment containing PMNs >0% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
@@ -2478,13 +2791,13 @@ summary(mod)$coefficients
 ```
 
 ```
-##                                     Estimate Std. Error   z value     Pr(>|z|)
-## (Intercept)                       -2.0460125 0.15236712 -13.42818 4.134678e-41
-## log10(parasitaemia + lambda_para)  0.6425714 0.01350025  47.59701 0.000000e+00
+##                                     Estimate Std. Error   z value    Pr(>|z|)
+## (Intercept)                       -2.0457954 0.15190085 -13.46796 2.41429e-41
+## log10(parasitaemia + lambda_para)  0.6426988 0.01349885  47.61138 0.00000e+00
 ```
 
 ```r
-preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+preds=predict(mod, newdata=data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
      ylab = 'Pigment containing PMMs >0% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
@@ -2511,7 +2824,7 @@ table(SMA=pigmt_data$SMA, study=pigmt_data$study)
 ```
 ##    study
 ## SMA    AQ AQUAMAT Lyke et al SEAQUAMAT  SMAC
-##   0   457    2688        142      1165 20050
+##   0   457    2688        142      1168 20050
 ##   1    26    1158         24       100  5451
 ```
 
@@ -2555,7 +2868,10 @@ summary(mod)
 ```r
 xs = (0: round(100*quantile(pigmt_data$prop_pigneut, 
                             probs = .99, na.rm = T)))/100
-lines(log10(xs+lambda_pigment), predict(mod, data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment)),lwd=3,col='red')
+lines(log10(xs+lambda_pigment), 
+      predict(mod, newdata=data.frame(prop_pigneut=xs,
+                                      lambda_pigment=lambda_pigment)),
+      lwd=3,col='red')
 
 
 plot(jitter(log10(pigmt_data$prop_pigmono[Af_ind]+lambda_pigment),amount = 0.05),xaxt='n',
@@ -2599,12 +2915,16 @@ summary(mod)
 ```r
 xs = (0: round(100*quantile(pigmt_data$prop_pigmono, 
                             probs = .99, na.rm = T)))/100
-lines(log10(xs+lambda_pigment), predict(mod, data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment,country_f= -1),exclude = 'country_f'),lwd=3,col='red')
+lines(log10(xs+lambda_pigment), 
+      predict(mod, newdata=data.frame(prop_pigmono=xs,
+                                      lambda_pigment=lambda_pigment,
+                                      country_f= -1),
+              exclude = 'country_f'),lwd=3,col='red')
 ```
 
 ```
-## Warning in predict.gam(mod, data.frame(prop_pigmono = xs, lambda_pigment =
-## lambda_pigment, : factor levels -1 not in original fit
+## Warning in predict.gam(mod, newdata = data.frame(prop_pigmono = xs,
+## lambda_pigment = lambda_pigment, : factor levels -1 not in original fit
 ```
 
 ```r
@@ -2646,14 +2966,15 @@ summary(mod)
 ```r
 xs = (0: round(100*quantile(pigmt_data$prop_pigneut[Af_ind], 
                             probs = .99, na.rm = T)))/100
-preds = predict(mod, data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment,
-                                country_f= -1),
+preds = predict(mod, newdata=data.frame(prop_pigneut=xs,
+                                        lambda_pigment=lambda_pigment,
+                                        country_f= -1),
                 type='response',se.fit = T,exclude='country_f')
 ```
 
 ```
-## Warning in predict.gam(mod, data.frame(prop_pigneut = xs, lambda_pigment =
-## lambda_pigment, : factor levels -1 not in original fit
+## Warning in predict.gam(mod, newdata = data.frame(prop_pigneut = xs,
+## lambda_pigment = lambda_pigment, : factor levels -1 not in original fit
 ```
 
 ```r
@@ -2698,14 +3019,14 @@ summary(mod)
 ```r
 xs = (0: round(100*quantile(pigmt_data$prop_pigmono[Af_ind], 
                             probs = .99, na.rm = T)))/100
-preds = predict(mod, data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment,
-                                country_f= -1),
+preds = predict(mod, newdata=data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment,
+                                        country_f= -1),
                 type='response',se.fit = T,exclude='country_f')
 ```
 
 ```
-## Warning in predict.gam(mod, data.frame(prop_pigmono = xs, lambda_pigment =
-## lambda_pigment, : factor levels -1 not in original fit
+## Warning in predict.gam(mod, newdata = data.frame(prop_pigmono = xs,
+## lambda_pigment = lambda_pigment, : factor levels -1 not in original fit
 ```
 
 ```r
@@ -2715,7 +3036,7 @@ axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment),
      labels = c(0,1,2,5,10,20))
 ```
 
-![](Pigment_Prognostic_Value_files/figure-html/unnamed-chunk-19-1.png)<!-- -->
+![](Pigment_Prognostic_Value_files/figure-html/unnamed-chunk-22-1.png)<!-- -->
 
 
 
@@ -2886,17 +3207,7 @@ summary(mod_PMM_hrp2)$coefficients
 ```r
 xs = (0:40)/100
 
-## bootstrap uncertainty for mixed-models
-library(bootpredictlme4)
-```
 
-```
-## Registered S3 method overwritten by 'bootpredictlme4':
-##   method         from
-##   predict.merMod lme4
-```
-
-```r
 preds_PMN = bootMer(mod_PMN_hrp2, nsim=200, 
                     FUN=function(x)predict(x, newdata=data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment), re.form=NA))
 
@@ -2909,7 +3220,7 @@ axis(1, at = log10(c(0,1,2,5,10,20,40)/100 +lambda_pigment),
      labels = c(0,1,2,5,10,20,40))
 polygon(log10(c(xs, rev(xs))+lambda_pigment),
         100*inv.logit(c(apply(preds_PMN$t,2,quantile,probs=0.975),
-                    rev(apply(preds_PMN$t,2,quantile,probs=0.025)))),
+                        rev(apply(preds_PMN$t,2,quantile,probs=0.025)))),
         col = adjustcolor('grey',.3), border = NA)
 
 
@@ -2926,7 +3237,7 @@ axis(1, at = log10(c(0,3,6,10,20,40)/100 +lambda_pigment),
      labels = c(0,3,6,10,20,40))
 polygon(log10(c(xs, rev(xs))+lambda_pigment),
         100*inv.logit(c(apply(preds_PMM$t,2,quantile,probs=0.975),
-                    rev(apply(preds_PMM$t,2,quantile,probs=0.025)))),
+                        rev(apply(preds_PMM$t,2,quantile,probs=0.025)))),
         col = adjustcolor('grey',.3), border = NA)
 ```
 

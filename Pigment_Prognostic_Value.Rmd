@@ -29,9 +29,23 @@ library(gtools)
 library(RColorBrewer)
 library(dplyr)
 library(missForest)
+library(bootpredictlme4) ## bootstrap uncertainty for mixed-models
 
 sessionInfo()
 ```
+
+
+# Systemativ review
+
+```{r}
+sysreview=read.csv('~/Dropbox/Apps/Overleaf/Pigment_Prognosis_Severe_Malaria/SystematicReview/All_Identified_papers_merged.csv')
+table(sysreview$Screening.pass)
+table(sysreview$ReasonExclude)
+sum(sysreview$N..Severe.malaria.[sysreview$Screening.pass=='Yes'])
+median(sysreview$N..Severe.malaria.[sysreview$Screening.pass=='Yes'])
+range(sysreview$N..Severe.malaria.[sysreview$Screening.pass=='Yes'])
+```
+
 
 # Data
 
@@ -39,7 +53,7 @@ sessionInfo()
 load('RData/Merged_pigment_data.RData')
 pigmt_data$meta_code = apply(pigmt_data[, c('study','country')], 1, 
                              function(x) paste(x[1],x[2],sep=': '))
-
+table(pigmt_data$study)
 # remove patients without an outcome variable
 pigmt_data = filter(pigmt_data, !is.na(outcome))
 
@@ -203,6 +217,7 @@ aggregate(pig_mono ~ meta_code, data = pigmt_data, FUN = median)
 
 
 Some data plots
+
 ```{r data_exploratory_plots, echo=F}
 par(mfrow=c(2,2),las=1)
 ind = pigmt_data$prop_pigneut>0
@@ -276,8 +291,9 @@ summary(mod_PM_SQ)$s.pv
 ```
 
 
+
 ```{r MORU_results, fig.width=12, fig.height=10, echo=F}
-par(las=1, bty='n', cex.lab=1.5, cex.axis=1.5, family='serif')
+par(las=1, bty='n', cex.lab=1.9, cex.axis=1.7, family='serif')
 layout(mat = matrix(c(1,2,2,3,4,4,
                       5,6,6,7,8,8,
                       9,10,10,11,12,12),nrow = 6,byrow = F))
@@ -292,10 +308,10 @@ par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$parasitaemia[sq_ind|aqViet_ind]+lambda_para),
      main ='', xlab='',xaxt='n',xlim = range(xs),
      breaks = 30,
-     ylab ='n')
+     ylab ='')
 mtext(text = paste0('n=',sum(notna_para&(sq_ind|aqViet_ind))),
       line = 1,
-      side = 3, adj = 0, cex=1.1)
+      side = 3, adj = 0, cex=1.3)
 par(mar = c(5,6,0,4))
 
 my_preds=predict(mod_PCT_SQ,
@@ -305,12 +321,13 @@ my_preds=predict(mod_PCT_SQ,
                  exclude = "s(country_f)",se.fit = T)
 plot(xs, 100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(5,50),
-     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+     xlab='Parasite count (per uL)',type='l',lwd=3)
 axis(1, at = 2:6, labels = c(expression(10^2),
                              expression(10^3),
                              expression(10^4),
                              expression(10^5),
                              expression(10^6)))
+text(x = 3.5, y=40, labels='Asian adults\nand children',cex=2)
 polygon(x = c(xs, rev(xs)),
         y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
                             rev(my_preds$fit-1.96*my_preds$se.fit))),
@@ -320,9 +337,10 @@ polygon(x = c(xs, rev(xs)),
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$parasitaemia[aq_ind]+lambda_para),
      main ='', xlab='', xaxt='n',xlim = range(xs),breaks = 30,
-     ylab ='n')
+     ylab ='', yaxt='n')
+axis(2, at=c(0,250,500))
 mtext(text = paste0('n=',sum(notna_para&aq_ind)),
-      line = 1,side = 3, adj = 0, cex=1.1)
+      line = 1,side = 3, adj = 0, cex=1.3)
 par(mar = c(5,6,0,4))
 
 my_preds=predict(mod_PCT_AQ,
@@ -332,12 +350,13 @@ my_preds=predict(mod_PCT_AQ,
                  exclude = "s(country_f)",se.fit = T)
 plot(xs,100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(4,20),
-     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+     xlab='Parasite count (per uL)',type='l',lwd=3)
 axis(1, at = 2:6, labels = c(expression(10^2),
                              expression(10^3),
                              expression(10^4),
                              expression(10^5),
                              expression(10^6)))
+text(x = 3.5, y=17.5, labels='African children',cex=2)
 polygon(x = c(xs, rev(xs)),
         y = 100*inv.logit(c(my_preds$fit+1.96*my_preds$se.fit,
                             rev(my_preds$fit-1.96*my_preds$se.fit))),
@@ -346,15 +365,18 @@ polygon(x = c(xs, rev(xs)),
 
 
 ####********* Neutrophils *********#######
+####*
+my_v_ticks = c(1,5,20)
 xs = (0: round(100*quantile(pigmt_data$prop_pigneut, 
                             probs = .99, na.rm = T)))/100
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigneut[sq_ind|aqViet_ind]+lambda_pigment),
      main ='', xlab='', xaxt='n',
      xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20,
-     ylab ='n')
+     ylab ='', yaxt='n')
+axis(2, at = c(0, 200, 400))
 mtext(text = paste0('n=',sum(notna_neut&(sq_ind|aqViet_ind))),
-      line = 1,side = 3, adj = 0, cex=1.1)
+      line = 1,side = 3, adj = 0, cex=1.3)
 par(mar = c(5,6,0,4))
 
 my_preds=predict(mod_PN_SQ,
@@ -363,10 +385,12 @@ my_preds=predict(mod_PN_SQ,
                                     country_f = 0),
                  exclude = "s(country_f)",se.fit = T)
 plot(log10(xs+lambda_pigment), 
-     100*inv.logit(my_preds$fit), panel.first = grid(),
+     100*inv.logit(my_preds$fit), panel.first = grid(NA, NULL),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(5,50),
-     xlab='Admission pigment containing PMNs (%)',
+     xlab='Pigment containing PMNs (%)',
      type='l',lwd=3)
+text(x = -1.65, y=40, labels='Asian adults\nand children',cex=2)
+abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
      labels = c(0,1,2,5,10,20))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -380,9 +404,10 @@ hist(log10(pigmt_data$prop_pigneut[aq_ind]+lambda_pigment),
      main ='', xlab='', xaxt='n',
      xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), 
      breaks = 20,
-     ylab ='n')
+     ylab ='', yaxt='n')
+axis(2, at = c(0,500,1000))
 mtext(text = paste0('n=',sum(notna_neut&(aq_ind))),
-      line = 1,side = 3, adj = 0, cex=1.1)
+      line = 1,side = 3, adj = 0, cex=1.3)
 par(mar = c(5,6,0,4))
 
 my_preds=predict(mod_PN_AQ,
@@ -391,9 +416,11 @@ my_preds=predict(mod_PN_AQ,
                                     country_f = 0),
                  exclude = "s(country_f)",se.fit = T)
 plot(log10(xs+lambda_pigment),
-     100*inv.logit(my_preds$fit), panel.first = grid(),
+     100*inv.logit(my_preds$fit), panel.first = grid(NA, NULL),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(4,20),
-     xlab='Admission pigment containing PMNs (%)',type='l',lwd=3)
+     xlab='Pigment containing PMNs (%)',type='l',lwd=3)
+text(x = -1.65, y=17.5, labels='African children',cex=2)
+abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,2,5,10,20)/100+lambda_pigment), 
      labels = c(0,1,2,5,10,20))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -410,9 +437,10 @@ par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigmono[sq_ind|aqViet_ind]+lambda_pigment),
      main ='', xlab='', xaxt='n',
      xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20,
-     ylab ='n')
+     ylab ='', yaxt='n')
+axis(2, at = c(0, 300, 600))
 mtext(text = paste0('n=',sum(notna_mono&(sq_ind|aqViet_ind))),
-      line = 1,side = 3, adj = 0, cex=1.1)
+      line = 1,side = 3, adj = 0, cex=1.3)
 par(mar = c(5,6,0,4))
 
 my_preds=predict(mod_PM_SQ,
@@ -421,9 +449,11 @@ my_preds=predict(mod_PM_SQ,
                                     country_f = 0),
                  exclude = "s(country_f)",se.fit = T)
 plot(log10(xs+lambda_pigment), 
-     100*inv.logit(my_preds$fit), panel.first = grid(),
+     100*inv.logit(my_preds$fit), panel.first = grid(NA, NULL),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(5,50),
-     xlab='Admission pigment containing PMMs (%)',type='l',lwd=3)
+     xlab='Pigment containing PMMs (%)',type='l',lwd=3)
+text(x = -1.65, y=40, labels='Asian adults\nand children',cex=2)
+abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,20,40))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -436,9 +466,10 @@ par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigmono[aq_ind]+lambda_pigment),
      main ='', xlab='', xaxt='n',
      xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20,
-     ylab ='n')
+     ylab ='', yaxt='n')
+axis(2, at = c(0, 500, 1000))
 mtext(text = paste0('n=',sum(notna_mono&(aq_ind))),
-      line = 1,side = 3, adj = 0, cex=1.1)
+      line = 1,side = 3, adj = 0, cex=1.3)
 par(mar = c(5,6,0,4))
 
 my_preds=predict(mod_PM_AQ,
@@ -447,10 +478,12 @@ my_preds=predict(mod_PM_AQ,
                                     country_f = 0),
                  exclude = "s(country_f)",se.fit = T)
 plot(log10(xs+lambda_pigment),
-     100*inv.logit(my_preds$fit), panel.first = grid(),
+     100*inv.logit(my_preds$fit), panel.first = grid(NA, NULL),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(4,20),
-     xlab = 'Admission pigment containing PMMs (%)',
+     xlab = 'Pigment containing PMMs (%)',
      type='l',lwd=3)
+text(x = -1.65, y=17.5, labels='African children',cex=2)
+abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,20,40))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -459,7 +492,35 @@ polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
         border = NA, col = adjustcolor('grey',alpha.f = .3))
 ```
 
-## In cerebral malaria
+### 5% prognostic value
+
+```{r}
+## Neutrophils
+mod_5percentMORU_PMN = 
+  glmer(outcome ~ (prop_pigneut>0.05) + (1|country_f:study),
+        family='binomial', data = pigmt_data[pigmt_data$study %in% c('AQ','AQUAMAT','SEAQUAMAT'), ])
+
+xx=summary(mod_5percentMORU_PMN)
+writeLines(sprintf('In the MORU data (n=%s), the odds ratio for death in those with >5%% pigment containing PMNs is %s (95%% CI %s to %s)',
+                   length(xx$residuals),
+                   round(exp(xx$coefficients[2,1]),2),
+                   round(exp(xx$coefficients[2,1]-1.96*xx$coefficients[2,2]),2),
+                   round(exp(xx$coefficients[2,1]+1.96*xx$coefficients[2,2]),2)))
+
+## Monocytes
+mod_5percentMORU_PMM = 
+  glmer(outcome ~ (prop_pigmono>0.05) + (1|country_f:study),
+        family='binomial', data = pigmt_data[pigmt_data$study %in% c('AQ','AQUAMAT','SEAQUAMAT'), ])
+
+xx=summary(mod_5percentMORU_PMM)
+writeLines(sprintf('In the MORU data (n=%s), the odds ratio for death in those with >5%% pigment containing PMMs is %s (95%% CI %s to %s)',
+                   length(xx$residuals),
+                   round(exp(xx$coefficients[2,1]),2),
+                   round(exp(xx$coefficients[2,1]-1.96*xx$coefficients[2,2]),2),
+                   round(exp(xx$coefficients[2,1]+1.96*xx$coefficients[2,2]),2)))
+```
+
+### In cerebral malaria
 
 ```{r}
 ind_cerebral = pigmt_data$coma==1
@@ -516,7 +577,7 @@ my_preds=predict(mod_PCT_AQ,
                  exclude = "s(country_f)",se.fit = T)
 plot(xs,100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
-     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+     xlab='Parasite count (per uL)',type='l',lwd=3)
 axis(1, at = 1:6, labels = c(10,
                              expression(10^2),
                              expression(10^3),
@@ -539,7 +600,7 @@ my_preds=predict(mod_PCT_SQ,
                  exclude = "s(country_f)",se.fit = T)
 plot(xs, 100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
-     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+     xlab='Parasite count (per uL)',type='l',lwd=3)
 axis(1, at = 1:6, labels = c(10,
                              expression(10^2),
                              expression(10^3),
@@ -566,7 +627,7 @@ my_preds=predict(mod_PN_AQ,
 plot(log10(xs+lambda_pigment),
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
-     xlab='Admission pigment containing PMNs (%)',type='l',lwd=3)
+     xlab='Pigment containing PMNs (%)',type='l',lwd=3)
 axis(1, at = log10(c(0,1,2,5,10)/100+lambda_pigment), 
      labels = c(0,1,2,5,10))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -588,7 +649,7 @@ my_preds=predict(mod_PN_SQ,
 plot(log10(xs+lambda_pigment), 
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
-     xlab='Admission pigment containing PMNs (%)',
+     xlab='Pigment containing PMNs (%)',
      type='l',lwd=3)
 axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
      labels = c(0,1,2,5,10,20))
@@ -614,7 +675,7 @@ my_preds=predict(mod_PM_AQ,
 plot(log10(xs+lambda_pigment),
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n', ylim = c(9,35),
-     xlab = 'Admission pigment containing PMMs (%)',
+     xlab = 'Pigment containing PMMs (%)',
      type='l',lwd=3)
 axis(1, at = log10(c(0,1,5,10,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,10,20,40))
@@ -637,7 +698,7 @@ my_preds=predict(mod_PM_SQ,
 plot(log10(xs+lambda_pigment), 
      100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(10,60),
-     xlab='Admission pigment containing PMMs (%)',type='l',lwd=3)
+     xlab='Pigment containing PMMs (%)',type='l',lwd=3)
 axis(1, at = log10(c(0,1,2,5,10,15)/100+lambda_pigment), 
      labels = c(0,1,2,5,10,15))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -759,16 +820,17 @@ summary(mod_PM)$s.pv
 
 ```
 
-```{r African_children, fig.width=10, fig.height=8}
-par(las=1, bty='n', cex.lab=1.3, cex.axis=1.3, family='serif')
-layout(mat = matrix(c(1,2,2,3,4,4,5,6,6),nrow = 3,byrow = F))
+```{r African_children, fig.width=9, fig.height=7}
+par(las=1, bty='n', cex.lab=1.5, cex.axis=1.5, family='serif')
+layout(mat = matrix(c(1,2,2,2,3,4,4,4,5,6,6,6),nrow = 4,byrow = F))
 
 ####********* Parasite counts *********#######
 xs = seq(log10(lambda_para),6.5,length.out = 100)
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$parasitaemia[Af_ind]+50),
      main ='', xlab='',xaxt='n',xlim = range(xs)+c(-.1,.1),
-     breaks = 30, ylab ='n')
+     breaks = 30, ylab ='', yaxt='n')
+axis(2,at = c(0,1000,2000,3000))
 mtext(text = paste0('n=',sum(notna_para&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
 par(mar = c(5,6,0,4))
@@ -782,7 +844,7 @@ my_preds=predict(mod_PCT,
                  se.fit = T)
 plot(xs, 100*inv.logit(my_preds$fit), panel.first = grid(),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
-     xlab='Admission parasite count (per uL)',type='l',lwd=3)
+     xlab='Parasite count (per uL)',type='l',lwd=3)
 axis(1, at = 2:6, labels = c(expression(10^2),
                              expression(10^3),
                              expression(10^4),
@@ -799,7 +861,7 @@ xs = (0: round(100*quantile(pigmt_data$prop_pigneut,
                             probs = .99, na.rm = T)))/100
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigneut[Af_ind]+lambda_pigment),
-     main ='', xlab='', xaxt='n',ylab ='n',
+     main ='', xlab='', xaxt='n',ylab ='',
      xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20)
 mtext(text = paste0('n=',sum(notna_neut&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
@@ -813,10 +875,11 @@ my_preds=predict(mod_PN,
                  exclude = c("s(country_f)","study_f)"),
                  se.fit = T)
 plot(log10(xs+lambda_pigment), 
-     100*inv.logit(my_preds$fit), panel.first = grid(),
+     100*inv.logit(my_preds$fit), panel.first = grid(NA,NULL),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
-     xlab='Admission pigment containing PMNs (%)',
+     xlab='Pigment containing PMNs (%)',
      type='l',lwd=3)
+abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment), 
      labels = c(0,1,2,5,10,20))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -832,10 +895,11 @@ xs = (0: round(100*quantile(pigmt_data$prop_pigmono,
 
 par(mar = c(1,6,5,4))
 hist(log10(pigmt_data$prop_pigmono[Af_ind]+lambda_pigment),
-     main ='', xlab='', xaxt='n',ylab ='n',
+     main ='', xlab='', xaxt='n',ylab ='',yaxt='n',
      xlim = range(log10(xs+lambda_pigment))+c(-.1,.1), breaks = 20)
 mtext(text = paste0('n=',sum(notna_mono&Af_ind)),
       line = 1,side = 3, adj = 0, cex=1.1)
+axis(2, at=c(0,3000,6000,9000))
 par(mar = c(5,6,0,4))
 
 my_preds=predict(mod_PM,
@@ -846,9 +910,10 @@ my_preds=predict(mod_PM,
                  exclude = c("s(country_f)","study_f"),
                  se.fit = T)
 plot(log10(xs+lambda_pigment), 
-     100*inv.logit(my_preds$fit), panel.first = grid(),
+     100*inv.logit(my_preds$fit), panel.first = grid(NA,NULL),
      ylab = 'Mortality (%)', xaxt='n',ylim = c(3,20),
-     xlab='Admission pigment containing PMMs (%)',type='l',lwd=3)
+     xlab='Pigment containing PMMs (%)',type='l',lwd=3)
+abline(v=log10(my_v_ticks/100+lambda_pigment), lty='dotted',  col='lightgray')
 axis(1, at = log10(c(0,1,5,20,40)/100+lambda_pigment), 
      labels = c(0,1,5,20,40))
 polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
@@ -861,6 +926,7 @@ polygon(x = log10(c(xs, rev(xs))+lambda_pigment),
 ## Prognostic value of pigmented neutrophils alone: meta-analysis
 
 Remove patients with no pigment data
+
 ```{r}
 pigmt_data = filter(pigmt_data, 
                     !is.na(prop_pigmono) | !is.na(prop_pigneut))
@@ -907,11 +973,11 @@ plot(c(0,xxs[,1]), 0:nrow(xxs), pch=16, xlim = c(-0.25, 1.2),
      ylab='', yaxt='n',panel.first = grid(),
      xlab='Odds-ratio for death', xaxt='n')
 abline(v=0, lty=2, lwd=2)
-mtext(text = 'A: pigment containing PMNs',side = 3,adj = 0,cex = 1.3, 
+mtext(text = 'a: pigment containing PMNs',side = 3,adj = 0,cex = 1.3, 
       line = 1.5)
 axis(1, at = log(c(1,2,3)), labels = 1:3)
 axis(2, at = 0:nrow(xxs), 
-     labels = c('0%: ref','(0-1]','(1-2]','(2-5]','>5'),tick = F)
+     labels = c('0%\n(reference)','(0-1]%','(1-2]%','(2-5]%','>5%'),tick = F)
 # axis(2, at = 3, labels = expression(''>="5%"))
 axis(4, at = 0:nrow(xxs),tick = F,
      labels = paste('n',table(pigmt_data$pig_neut100_bins),
@@ -927,12 +993,11 @@ plot(c(0,xxs2[,1]), 0:nrow(xxs2), pch=16, xlim = c(-0.25, 1.2),
      ylab='', yaxt='n',panel.first = grid(),
      xlab='Odds-ratio for death', xaxt='n')
 abline(v=0, lty=2, lwd=2)
-mtext(text = 'B: pigment containing PMMs',side = 3,adj = 0, cex = 1.3, 
+mtext(text = 'b: pigment containing PMMs',side = 3,adj = 0, cex = 1.3, 
       line = 1.5)
 axis(1, at = log(c(1,2,3)), labels = 1:3)
 axis(2, at = 0:nrow(xxs2), 
-     labels = c('0%: ref','(0-1]','(1-2]','(2-5]','>5'),tick = F)
-# axis(2, at = 3, labels = expression(''>="5%"))
+     labels = c('0%\n(reference)','(0-1]%','(1-2]%','(2-5]%','>5%'),tick = F)
 axis(4, at = 0:nrow(xxs2),tick = F,
      labels = paste('n',table(pigmt_data$pig_mono30_bins),
                     sep='='))
@@ -945,7 +1010,7 @@ for(i in 1:nrow(xxs2)){
 
 
 
-```{r pigmented_neutrophils_5percent, fig.width=10}
+```{r pigmented_neutrophils_5percent, fig.height=7, fig.width=7}
 ind_not_na = !is.na(pigmt_data$prop_pigneut) & !is.na(pigmt_data$outcome)
 ind_pos = pigmt_data$prop_pigneut > 0.05
 event_e = c()
@@ -965,21 +1030,21 @@ for(ss in unique(pigmt_data$meta_code)){
 }
 
 mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
-            n.c = n_c, studlab = lab,
+            n.c = n_c, studlab = lab,method = 'GLMM',
             sm = 'OR',
             comb.random = T)
 par(family='serif')
 forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
-       rightcols=c("effect", "ci", "w.random"),
+       rightcols='effect',
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
 
 
 
-Just look at SMAC - I mean what the hell were they thinking???
+Just looking at SMAC - what were they thinking???
 
-```{r}
+```{r smac_only, fig.height=4}
 ind_not_na = !is.na(pigmt_data$prop_pigneut) & !is.na(pigmt_data$outcome) & pigmt_data$study=='SMAC'
 ind_pos = pigmt_data$prop_pigneut > 0.05
 event_e = c()
@@ -987,7 +1052,7 @@ n_e = c()
 event_c = c()
 n_c = c()
 lab = c()
-for(ss in unique(pigmt_data$meta_code)){
+for(ss in unique(pigmt_data$meta_code[pigmt_data$study=='SMAC'])){
   ind = pigmt_data$meta_code==ss
   my_study = ss
   event_e = c(event_e, 
@@ -1004,16 +1069,106 @@ mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
             comb.random = T)
 par(family='serif')
 forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
-       rightcols=c("effect", "ci", "w.random"),
+       rightcols='effect',
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
 
 
+children 
+
+```{r PMN_5percent_children, fig.height=7}
+ind_not_na = !is.na(pigmt_data$prop_pigneut) &
+  !is.na(pigmt_data$outcome) & !is.na(pigmt_data$age) &
+  pigmt_data$age <=15
+ind_pos = pigmt_data$prop_pigneut > 0.05
+event_e = c()
+n_e = c()
+event_c = c()
+n_c = c()
+lab = c()
+for(ss in unique(pigmt_data$meta_code[!is.na(pigmt_data$age) & pigmt_data$age <= 15])){
+  ind = pigmt_data$meta_code==ss
+  my_study = ss
+  event_e = c(event_e, 
+              sum(pigmt_data$outcome[ind_not_na&ind&ind_pos]))
+  n_e = c(n_e, sum(ind_not_na&ind&ind_pos))
+  event_c = c(event_c, sum(pigmt_data$outcome[ind_not_na&ind& !ind_pos]))
+  n_c = c(n_c, sum(ind_not_na&ind& !ind_pos))
+  lab = c(lab, ss)           
+}
+
+mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
+            n.c = n_c, studlab = lab,
+            sm = 'OR',
+            comb.random = T)
+par(family='serif')
+forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
+       rightcols='effect',
+       test.overall.random=T,
+       digits.pval=1, scientific.pval=T)
+```
+
+
+Adults
+
+```{r PMN_5percent_adults, fig.height=4}
+ind_not_na = !is.na(pigmt_data$prop_pigneut) &
+  !is.na(pigmt_data$outcome) & !is.na(pigmt_data$age) &
+  pigmt_data$age >15
+ind_pos = pigmt_data$prop_pigneut > 0.05
+event_e = c()
+n_e = c()
+event_c = c()
+n_c = c()
+lab = c()
+for(ss in unique(pigmt_data$meta_code[!is.na(pigmt_data$age) & pigmt_data$age > 15])){
+  ind = pigmt_data$meta_code==ss
+  my_study = ss
+  event_e = c(event_e, 
+              sum(pigmt_data$outcome[ind_not_na&ind&ind_pos]))
+  n_e = c(n_e, sum(ind_not_na&ind&ind_pos))
+  event_c = c(event_c, sum(pigmt_data$outcome[ind_not_na&ind& !ind_pos]))
+  n_c = c(n_c, sum(ind_not_na&ind& !ind_pos))
+  lab = c(lab, ss)           
+}
+
+mod=metabin(event.e = event_e, n.e = n_e,event.c = event_c,
+            n.c = n_c, studlab = lab,
+            sm = 'OR',
+            comb.random = T)
+par(family='serif')
+forest(mod, lab.e = '>5% pPMN', lab.c = '<5% pPMN',
+       rightcols='effect',
+       test.overall.random=T,
+       digits.pval=1, scientific.pval=T)
+```
+Difference between children and adults? (which is a difference between high and low transmission settings)
+
+
+```{r}
+table(pigmt_data$study, pigmt_data$age>15)
+pigmt_data$Africa = as.numeric(Af_ind)
+mod1=glmer(outcome ~ as.numeric(pig_neut > 5) + (1|meta_code),
+              family = 'binomial', data = pigmt_data)
+exp(fixef(mod1)[2])
+
+summary(glmer(outcome ~ as.numeric(pig_neut >5) * (age<15) + (1|meta_code),
+              family = 'binomial', data = pigmt_data))
+
+summary(glmer(outcome ~ as.numeric(pig_neut >5) * Africa + (1|site),
+              family = 'binomial', data = pigmt_data))
+
+summary(glmer(outcome ~ as.numeric(pig_neut >5) + (1|site),
+              family = 'binomial', data = pigmt_data[pigmt_data$age<15,]))
+```
+
+
+
 
 ## Prognostic value of pigmented monocytes alone: meta-analysis
 
-```{r pigmented_monocytes_5percent, fig.width=10}
+```{r pigmented_monocytes_5percent, fig.height=7}
 ind_not_na = !is.na(pigmt_data$prop_pigmono) & !is.na(pigmt_data$outcome)
 ind_pos = pigmt_data$prop_pigmono > 0.05
 event_e = c()
@@ -1039,7 +1194,7 @@ mod=metabin(event.e = event_e,
             comb.random = T)
 par(family='serif')
 forest(mod, lab.e = '>5% pPMM', lab.c = '<5% pPMM',
-       rightcols=c("effect", "ci", "w.random"),
+       rightcols=F,
        test.overall.random=T,
        digits.pval=1, scientific.pval=T)
 ```
@@ -1358,16 +1513,18 @@ coefs_adj2_PM$upperCI = coefs_adj2_PM$Estimate+1.96*coefs_adj2_PM$Std..Error
 coefs_adj2_PM$lowerCI = coefs_adj2_PM$Estimate-1.96*coefs_adj2_PM$Std..Error
 ```
 
-severity at baseline across sites
+
+severity at baseline across studies
+
 ```{r severity_sites, fig.width=12, fig.height=8}
 ind_not_na_neut = !is.na(pigmt_data$prop_pigneut)
 ind_not_na_mono = !is.na(pigmt_data$prop_pigmono)
 
 my_cols = brewer.pal(n = 12, name = 'Paired')[c(2,10,6,8)]
 par(mar=c(5,10,4,2), las=1, bty='n', mfrow=c(1,2),cex.lab=1.3, cex.axis=1.3)
-epsilon = 0.1
+epsilon = -0.1
 plot(coefs_non_adj[,'Estimate'], (4:1)-epsilon, pch=17, 
-     panel.first = grid(), ylim = c(1-epsilon, 4+epsilon),
+     panel.first = grid(), ylim = c(1+epsilon, 4-epsilon),
      xlim = range(c(coefs_adj$upperCI, 
                     coefs_adj$lowerCI,
                     coefs_non_adj$upperCI,
@@ -1398,13 +1555,12 @@ legend('right',
                   'Adjusted: clinical',
                   'Adjusted: clinical and lab'),
        lwd = 3, col = my_cols, pch = 17:15, cex=1.3)
-mtext(text = 'A: >5% pigment containing PMNs',side = 3,adj = 0, cex = 1.5, line=1.5)
+mtext(text = 'a: >5% pigment containing PMNs',side = 3,adj = 0, cex = 1.5, line=1.5)
 
 
 par(mar=c(5,10,4,2), las=1)
-epsilon = 0.1
 plot(coefs_non_adj_PM[,'Estimate'], (4:1)-epsilon, pch=17, 
-     panel.first = grid(), ylim = c(1-epsilon, 4+epsilon),
+     panel.first = grid(), ylim = c(1+epsilon, 4-epsilon),
      xlim = range(c(coefs_adj_PM$upperCI, 
                     coefs_adj_PM$lowerCI,
                     coefs_non_adj_PM$upperCI,
@@ -1431,7 +1587,7 @@ for(j in 1:4){
   lines(c(coefs_adj2_PM$lowerCI[j], coefs_adj2_PM$upperCI[j]),
         c(i+epsilon, i+epsilon), lwd=2,col=my_cols[3])
 }
-mtext(text = 'B: >5% pigment containing PMMs',side = 3,adj = 0, cex = 1.5, line=1.5)
+mtext(text = 'b: >5% pigment containing PMMs',side = 3,adj = 0, cex = 1.5, line=1.5)
 ```
 
 
@@ -1458,7 +1614,10 @@ mod = glmer(PMNs5 ~ log10(parasitaemia+lambda_para) + (1 |site:country:study), f
 summary(mod)$coefficients
 xs = 10^(seq(1.5, 6, length.out = 100))
 
-preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+preds=predict(mod, newdata=data.frame(parasitaemia=xs,
+                                      site = -1, country= -1, study= -1,
+                                      lambda_para=lambda_para),
+              type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
      ylab = 'Pigment containing PMNs >5% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
@@ -1489,9 +1648,9 @@ mod = glmer(PMMs5 ~ log10(parasitaemia+lambda_para) + (1 |site:country:study), f
 summary(mod)$coefficients
 xs = 10^(seq(1.5, 6, length.out = 100))
 
-preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+preds=predict(mod, newdata=data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
-     ylab = 'Pigment containing PMNs >5% (probability)',
+     ylab = 'Pigment containing PMMs >5% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
      xaxt='n', panel.first=grid(),lwd=3)
 axis(1, at = 2:6, labels = c(expression(10^2),
@@ -1504,7 +1663,7 @@ par(mfrow=c(1,2))
 mod = glmer(as.numeric(prop_pigneut>0) ~ log10(parasitaemia+lambda_para) + (1 |site:country:study), family='binomial', data = pigmt_data)
 summary(mod)$coefficients
 
-preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+preds=predict(mod, newdata=data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
      ylab = 'Pigment containing PMNs >0% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
@@ -1519,7 +1678,7 @@ axis(1, at = 2:6, labels = c(expression(10^2),
 mod = glmer(as.numeric(prop_pigmono>0) ~ log10(parasitaemia+lambda_para) + (1 |site:country:study), family='binomial', data = pigmt_data)
 summary(mod)$coefficients
 
-preds=predict(mod, data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
+preds=predict(mod, newdata=data.frame(parasitaemia=xs,site = -1, country= -1, study= -1, lambda_para=lambda_para),type='response', allow.new.levels = T)
 plot(log10(xs), preds, type='l',
      ylab = 'Pigment containing PMMs >0% (probability)',
      xlab = 'Parasite density (per uL)', xlim = c(1.5,6.2),
@@ -1550,7 +1709,10 @@ mod = gam(hb ~ s(log10(prop_pigneut+lambda_pigment),k=5),
 summary(mod)
 xs = (0: round(100*quantile(pigmt_data$prop_pigneut, 
                             probs = .99, na.rm = T)))/100
-lines(log10(xs+lambda_pigment), predict(mod, data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment)),lwd=3,col='red')
+lines(log10(xs+lambda_pigment), 
+      predict(mod, newdata=data.frame(prop_pigneut=xs,
+                                      lambda_pigment=lambda_pigment)),
+      lwd=3,col='red')
 
 
 plot(jitter(log10(pigmt_data$prop_pigmono[Af_ind]+lambda_pigment),amount = 0.05),xaxt='n',
@@ -1566,9 +1728,11 @@ summary(mod)
 
 xs = (0: round(100*quantile(pigmt_data$prop_pigmono, 
                             probs = .99, na.rm = T)))/100
-lines(log10(xs+lambda_pigment), predict(mod, data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment,country_f= -1),exclude = 'country_f'),lwd=3,col='red')
-
-
+lines(log10(xs+lambda_pigment), 
+      predict(mod, newdata=data.frame(prop_pigmono=xs,
+                                      lambda_pigment=lambda_pigment,
+                                      country_f= -1),
+              exclude = 'country_f'),lwd=3,col='red')
 # SMA
 
 mod = gam(SMA ~ s(log10(prop_pigneut+lambda_pigment),k=3)+
@@ -1578,8 +1742,9 @@ mod = gam(SMA ~ s(log10(prop_pigneut+lambda_pigment),k=3)+
 summary(mod)
 xs = (0: round(100*quantile(pigmt_data$prop_pigneut[Af_ind], 
                             probs = .99, na.rm = T)))/100
-preds = predict(mod, data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment,
-                                country_f= -1),
+preds = predict(mod, newdata=data.frame(prop_pigneut=xs,
+                                        lambda_pigment=lambda_pigment,
+                                        country_f= -1),
                 type='response',se.fit = T,exclude='country_f')
 plot(log10(xs+lambda_pigment),
      preds$fit,lwd=3,col='red',type='l',xaxt='n')
@@ -1593,8 +1758,8 @@ mod = gam(SMA ~ s(log10(prop_pigmono+lambda_pigment),k=3)+
 summary(mod)
 xs = (0: round(100*quantile(pigmt_data$prop_pigmono[Af_ind], 
                             probs = .99, na.rm = T)))/100
-preds = predict(mod, data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment,
-                                country_f= -1),
+preds = predict(mod, newdata=data.frame(prop_pigmono=xs,lambda_pigment=lambda_pigment,
+                                        country_f= -1),
                 type='response',se.fit = T,exclude='country_f')
 plot(log10(xs+lambda_pigment),
      preds$fit,lwd=3,col='red',type='l',xaxt='n')
@@ -1608,32 +1773,29 @@ axis(1, at = log10(c(0,1,2,5,10,20)/100 +lambda_pigment),
 # HRP2 analysis - AQUAMAT
 
 This can only be run with access to the HRP2 data
+
 ```{r }
 hrp2_aq = read.csv('~/Dropbox/Datasets/AQUAMAT/AQM_childHRP2.csv')
 pigmt_data = pigmt_data %>% filter(study == 'AQUAMAT')
-
-pigmt_data$hrp2 = NA
-for(i in 1:nrow(pigmt_data)){
-  id = pigmt_data$id[i]
-  if(id %in% hrp2_aq$studynumber){
-    pigmt_data$hrp2[i] = hrp2_aq$hrp2_plasma[hrp2_aq$studynumber==id]
-  }
-}
+pigmt_data = merge(pigmt_data, hrp2_aq, by.x = 'id', by.y = 'studynumber')
 ```
 
 
 ```{r }
 pigmt_data = 
-  pigmt_data %>% filter(!is.na(hrp2),
-                        !is.na(prop_pigneut) | !is.na(prop_pigmono))
+  pigmt_data %>% filter(!is.na(hrp2_plasma),
+                        !is.na(pig_neut) | !is.na(pig_mono))
 
-pigmt_data$SM = as.numeric(pigmt_data$hrp2 >= 900)
+pigmt_data$SM = as.numeric(pigmt_data$hrp2_plasma >= 1000)
 
-sum(!is.na(pigmt_data$hrp2) & !is.na(pigmt_data$prop_pigneut))
-sum(!is.na(pigmt_data$hrp2) & !is.na(pigmt_data$prop_pigmono))
+cor.test(pigmt_data$SM, as.numeric(pigmt_data$prop_pigneut>0.05))
+
+table(pigmt_data$SM)
+sum(!is.na(pigmt_data$hrp2_plasma) & !is.na(pigmt_data$pig_neut))
+sum(!is.na(pigmt_data$hrp2_plasma) & !is.na(pigmt_data$pig_mono))
 
 
-mod=glmer(outcome ~ PMNs5 * SM + (1 | site:country), family='binomial', data = pigmt_data)
+mod=glmer(outcome ~ (prop_pigneut>0.05) + SM + (1 | site), family='binomial', data = pigmt_data)
 summary(mod)
 ```
 
@@ -1686,8 +1848,7 @@ summary(mod_PMM_hrp2)$coefficients
 
 xs = (0:40)/100
 
-## bootstrap uncertainty for mixed-models
-library(bootpredictlme4)
+
 preds_PMN = bootMer(mod_PMN_hrp2, nsim=200, 
                     FUN=function(x)predict(x, newdata=data.frame(prop_pigneut=xs,lambda_pigment=lambda_pigment), re.form=NA))
 
@@ -1700,7 +1861,7 @@ axis(1, at = log10(c(0,1,2,5,10,20,40)/100 +lambda_pigment),
      labels = c(0,1,2,5,10,20,40))
 polygon(log10(c(xs, rev(xs))+lambda_pigment),
         100*inv.logit(c(apply(preds_PMN$t,2,quantile,probs=0.975),
-                    rev(apply(preds_PMN$t,2,quantile,probs=0.025)))),
+                        rev(apply(preds_PMN$t,2,quantile,probs=0.025)))),
         col = adjustcolor('grey',.3), border = NA)
 
 
@@ -1717,7 +1878,7 @@ axis(1, at = log10(c(0,3,6,10,20,40)/100 +lambda_pigment),
      labels = c(0,3,6,10,20,40))
 polygon(log10(c(xs, rev(xs))+lambda_pigment),
         100*inv.logit(c(apply(preds_PMM$t,2,quantile,probs=0.975),
-                    rev(apply(preds_PMM$t,2,quantile,probs=0.025)))),
+                        rev(apply(preds_PMM$t,2,quantile,probs=0.025)))),
         col = adjustcolor('grey',.3), border = NA)
 
 
