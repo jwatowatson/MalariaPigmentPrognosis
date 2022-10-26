@@ -41,6 +41,7 @@ myMergedData$BVS[myMergedData$BVS==9]=NA
 myMergedData$BES[myMergedData$BES==9]=NA
 myMergedData$AGE[myMergedData$AGE>180]=NA
 myMergedData$PARASIT[myMergedData$PARASIT==9999999]=NA
+myMergedData$DEEPBR[myMergedData$DEEPBR==9]=NA
 
 
 apply(myMergedData, 2, function(x) round(100*mean(!is.na(x))))
